@@ -16,6 +16,7 @@ featureDataPath = fullfile(dataFolder, 'featureData.mat');
 if isfile(loadedSignalsPath)
     fprintf('Loaded signals file exists. Loading data...\n');
     load(loadedSignalsPath, 'loadedSignals');
+    [signalData, annotationsData, signalIds] = extractSignalData(loadedSignals);
 else
     fprintf('Loaded signals file not found. Running `loadSignalsAndAnnotations`...\n');
     loadedSignals = loadSignalsAndAnnotations(dataFolder, csvFile, signalsFolder, true, loadedSignalsPath);
@@ -56,20 +57,64 @@ else
 end
 
 
-%% Remove NANs, converting labels
-% Remove sequences with NaN values
-[X, Y, signalIds] = removeNaNSequences(X, Y, signalIds);
+%% Remove NANs 
+% Nan values can be removed based on raw signal data or feature data
+validIdx = findValidIndices(signalData);
+signalData = signalData(validIdx);
+annotationsData = annotationsData(validIdx);
+X = X(validIdx);
+Y = Y(validIdx);
+signalIds = signalIds(validIdx);
 
-% Convert multiclass labels to binary
-Ybinary = convertToBinaryLabels(Y);
+%% Convert annotations from numeric format to binary format
+% multiclass or binary class option -> choose correct mode
+
+mode = 'multi'; % or 'binary'
+
+% Number of artifact types for type mode only
+maxN = 6;
+%0    'clean'    'CLN'
+%1    'power'    'POW'
+%2    'baseline'    'BASE'
+%4    'frequency artifact'    'FREQ'
+%8    'irritated neuron'    'IRIT'
+%16    'other'    'OTHR'
+%32    'artifact'    'ARTIF'
+
+Yconverted = convertToBinaryLabels(Y, mode, maxN);
+
+% Add clean class as the first row
+Yconverted = cellfun(@(y) [~any(y, 1); y], Yconverted, 'UniformOutput', false);
+
+% Remove signals which contains sixth type of artifacts ('ARTIF'), which is not suitable for multiclass classification
+if strcmp(mode, 'multi')
+    % Find indices of signals containing artifact type 6 ('OTHR') +
+    % artifact type 7 ('ARTIF')
+    artifactTypeToDeleteIdx = cellfun(@(x) (any(x(6, :)) || any(x(7, :))), Yconverted);
+    
+    Xfiltered = X(~artifactTypeToDeleteIdx);
+    Yfiltered = Yconverted(~artifactTypeToDeleteIdx);
+    signalIdsFiltered = signalIds(~artifactTypeToDeleteIdx);
+
+    % Remove the 6th and 7th row
+    Yfiltered = cellfun(@(y) y(1:5, :), Yfiltered, 'UniformOutput', false);
+
+    % Display number of removed signals
+    disp(['Removed ', num2str(sum(artifactTypeToDeleteIdx)), ' signals containing unwanted artifact types']);
+end
+
 
 % Final variables for the model
-Xfinal = X;
-Yfinal = Ybinary;
+Xfinal = Xfiltered;
+Yfinal = Yfiltered;
+signalIdsFinal = signalIdsFiltered;
+
+% Convert labels to categorical 
+Yfinal = cellfun(@(y) double(y), Yfinal, 'UniformOutput', false);
 
 %% Data split for model training
 ratios = struct('train', 0.6, 'val', 0.2, 'test', 0.2);
-[trainIdx, valIdx, testIdx] = splitDataByPatients(signalIds, ratios);
+[trainIdx, valIdx, testIdx] = splitDataByPatients(signalIdsFiltered, ratios);
 
 % Access the splits
 XTrain = Xfinal(trainIdx, :);
@@ -84,13 +129,19 @@ fprintf('Number of training samples: %d\n', numel(trainIdx));
 fprintf('Number of validation samples: %d\n', numel(valIdx));
 fprintf('Number of test samples: %d\n', numel(testIdx));
 
-
 %% LSTM
-
 % Parameters for LSTM network
+
+% Handle number of classes and class weights
+if strcmp(mode, 'binary')
+    numClasses = 2;
+    classWeights = [0.6, 1]; % Only for binary classification
+elseif strcmp(mode, 'multi')
+    numClasses = maxN-1;
+    classWeights = ones(1, numClasses); % OPTIONAL: Equal weight for multi-class
+end
+
 inputSize = size(XTrain{1}, 1);   % Number of features
-numClasses = 2;                    % Binary classification
-classWeights = [0.6, 1];           % Class weights (e.g., for imbalanced data)
 lstmUnits = 20;                    % Number of LSTM units
 dropOut = 0.5;
 maxEpochs = 30;                    % Number of epochs
@@ -99,12 +150,14 @@ initialLearnRate = 0.001;          % Initial learning rate
 validationFrequency = 10;          % Frequency of validation checks
 validationPatience = 5;            % Early stopping if no improvement for 5 epochs
 
+disp(['Size of first YTrain sample: ', num2str(size(YTrain{1}))]);
+disp(['Expected size: [', num2str(numClasses), ', sequenceLength]']);
+
 % Call function to train the model and predict
 [net, predictedProbs] = trainAndPredictLSTM(XTrain, YTrain, XVal, YVal, XTest, YTest, ...
-    inputSize, numClasses, classWeights, lstmUnits, dropOut, maxEpochs, miniBatchSize, ...
-    initialLearnRate, validationFrequency, validationPatience);
+    inputSize, numClasses, classWeights, ...
+    lstmUnits, dropOut, maxEpochs, miniBatchSize, ...
+    initialLearnRate, validationFrequency, validationPatience, mode);
 %% Classify unseen data
-labels = cellfun(@(x) x', YTest, 'UniformOutput', false);
-labels = vertcat(labels{:});
 
-[accuracy, sensitivity, specificity, auc, optimalThreshold] = evaluateModel(predictedProbs, labels);
+[accuracy, sensitivity, specificity, auc, optimalThreshold] = evaluateModel(predictedProbs, YTest, mode)

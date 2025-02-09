@@ -1,6 +1,6 @@
 function [net, predictedProbs] = trainAndPredictLSTM(XTrain, YTrain, XVal, YVal, XTest, YTest, ...
     inputSize, numClasses, classWeights, lstmUnits, dropOut, maxEpochs, miniBatchSize, ...
-    initialLearnRate, validationFrequency, validationPatience)
+    initialLearnRate, validationFrequency, validationPatience, classMode)
     % This function trains an LSTM network and predicts probabilities.
     % 
     % Arguments:
@@ -15,18 +15,33 @@ function [net, predictedProbs] = trainAndPredictLSTM(XTrain, YTrain, XVal, YVal,
     %   initialLearnRate: The initial learning rate for the optimizer
     %   validationFrequency: How often to run validation during training
     %   validationPatience: Number of epochs without improvement before stopping training
+    %   classMode: 'binary' for binary classification, 'multi' for multi-label classification
 
-    % Define LSTM network architecture
+    % Validate mode input
+    if ~ismember(classMode, {'binary', 'multi'})
+        error("Invalid mode. Use 'binary' for binary classification or 'multi' for multi-label classification.");
+    end
+
+        % Define common LSTM layers
     layers = [
-        sequenceInputLayer(inputSize, "Name", "input")           % Input layer
-        lstmLayer(lstmUnits, "OutputMode", "sequence", "Name", "lstm") % LSTM layer for sequence output
-        dropoutLayer(dropOut)                                        % Dropout layer to prevent overfitting
-        fullyConnectedLayer(numClasses, "Name", "fc")            % Fully connected layer
-        softmaxLayer("Name", "softmax")                          % Softmax layer for probabilities
-        classificationLayer("Name", "output", ...
-            'Classes', categorical([0:numClasses-1]), ...         % Specify the classes explicitly
-            'ClassWeights', classWeights)                        % Add class weights
+        sequenceInputLayer(inputSize, "Name", "input")
+        lstmLayer(lstmUnits, "OutputMode", "sequence", "Name", "lstm")
+        dropoutLayer(dropOut, "Name", "dropout")
+        fullyConnectedLayer(numClasses, "Name", "fc")
     ];
+    
+    % Configure output layers based on classMode
+    if strcmp(classMode, 'binary')
+        layers = [layers; 
+            softmaxLayer("Name", "softmax");
+            classificationLayer("Name", "output", "Classes", categorical(0:numClasses-1), "ClassWeights", classWeights) 
+        ];
+    else % Multi-label classification
+        layers = [layers;
+            sigmoidLayer("Name", "sigmoid");
+            multilabelClassificationLayer("output", classWeights)
+        ];
+    end
 
     % Set training options
     options = trainingOptions("adam", ...
@@ -46,9 +61,5 @@ function [net, predictedProbs] = trainAndPredictLSTM(XTrain, YTrain, XVal, YVal,
     net = trainNetwork(XTrain, YTrain, layers, options);
 
     % Predict probabilities on the test data
-    probs = predict(net, XTest, 'MiniBatchSize', miniBatchSize);
-
-    % Extract second row probabilities (for the positive class in binary classification)
-    artifactProbs = cellfun(@(x) x(2,:)', probs, 'UniformOutput', false);
-    predictedProbs = vertcat(artifactProbs{:});
+    predictedProbs = predict(net, XTest, 'MiniBatchSize', miniBatchSize);
 end

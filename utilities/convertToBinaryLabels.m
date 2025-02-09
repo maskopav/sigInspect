@@ -1,17 +1,31 @@
-function YBinary = convertToBinaryLabels(Y)
-    % CONVERT TO BINARY LABELS - Converts multiclass labels to binary.
+function YConverted = convertToBinaryLabels(Y, mode, maxN)
+    % CONVERTTOBINARYLABELS - Converts numeric labels to either binary or multi-label format.
     %
-    % Input:
-    %   - Y: Cell array of categorical labels (multiclass).
+    % Inputs:
+    %   - Y: Cell array of numeric labels.
+    %   - mode: String specifying conversion mode:
+    %       * 'binary'  - Convert all nonzero labels to 1 (artifact vs. clean)
+    %       * 'multi'   - Convert to multi-label binary format using annotNum2Bin
+    %   - maxN: (Required for 'multi' mode) Maximum number of artifact types.
     %
     % Output:
-    %   - YBinary: Cell array of categorical binary labels.
+    %   - YConverted: Cell array of converted labels (either binary or multi-label).
     
-    YBinary = cell(size(Y));
-    
-    for i = 1:numel(Y)
-        numericLabels = double(string(Y{i})); % Convert to numeric for manipulation
-        numericLabels(numericLabels ~= 0) = 1; % Convert multiclass to binary
-        YBinary{i, 1} = categorical(numericLabels); % Convert back to categorical
+    % Validate mode input
+    if ~ismember(mode, {'binary', 'multi'})
+        error("Invalid mode. Use 'binary' for binary classification or 'multi' for multi-label classification.");
     end
+
+    if strcmp(mode, 'multi') && nargin < 3
+        error("For 'multi' mode, you must provide maxN (number of artifact types).");
+    end
+
+    % Apply conversion using cellfun
+    if strcmp(mode, 'binary')
+        YConverted = cellfun(@(x) categorical(double(double(string(x)) ~= 0)), Y, 'UniformOutput', false);
+    else % mode == 'multi'
+        YConverted = cellfun(@(x) annotNum2Bin(double(string(x)), maxN)', Y, 'UniformOutput', false);
+    end
+    
+    fprintf("Labels converted using mode: %s\n", mode);
 end
