@@ -112,6 +112,11 @@ signalIdsFinal = signalIdsFiltered;
 % Convert labels to categorical 
 Yfinal = cellfun(@(y) double(y), Yfinal, 'UniformOutput', false);
 
+%% Compute class weights
+alpha = 0.8; % Increase this to put more emphasis on rare classes
+classWeights = computeClassWeights(Yfinal, alpha);
+
+classWeights(end) = 0.6
 %% Data split for model training
 ratios = struct('train', 0.6, 'val', 0.2, 'test', 0.2);
 [trainIdx, valIdx, testIdx] = splitDataByPatients(signalIdsFiltered, ratios);
@@ -138,7 +143,7 @@ if strcmp(mode, 'binary')
     classWeights = [0.6, 1]; % Only for binary classification
 elseif strcmp(mode, 'multi')
     numClasses = maxN-1;
-    classWeights = ones(1, numClasses); % OPTIONAL: Equal weight for multi-class
+    %classWeights = %ones(1, numClasses); 
 end
 
 inputSize = size(XTrain{1}, 1);   % Number of features
