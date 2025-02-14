@@ -118,7 +118,7 @@ freqArtifIndices = find(cellfun(@(y) any(y(4, :)), Yfinal));
 irritArtifIndices = find(cellfun(@(y) any(y(5, :)), Yfinal));
 
 %% Visualize the desired signal
-cellIdx = freqArtifIndices(5);
+cellIdx = irritArtifIndices(40);
 
 sampleFrequency = 24000;
 windowLength = 1;
@@ -126,8 +126,9 @@ windowLengthSamples = sampleFrequency * windowLength;
 sampleSignal = signalData{cellIdx};
 sampleFeatures = Xfinal{cellIdx};
 
-selectedFeaturesIdx = (1:8);
+selectedFeaturesIdx = (1:5);
 sampleFeatures = sampleFeatures(selectedFeaturesIdx, :);
 sampleFeatNames = featNames(selectedFeaturesIdx);
 
-visualizeSignalWithFeatures(sampleSignal, sampleFrequency, windowLengthSamples,sampleFeatures, sampleFeatNames);
+
+visualizeSignalWithFeatures(sampleSignal, sampleFrequency, sampleFeatures, sampleFeatNames, windowLengthSamples, true);
