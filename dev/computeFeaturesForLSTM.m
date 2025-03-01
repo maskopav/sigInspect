@@ -14,23 +14,17 @@ function [X, Y, featNames] = computeFeaturesForLSTM(signals, labels, windowLengt
     X = cell(numSignals, 1);
     Y = cell(numSignals, 1);
 
-    % Compute number of samples per window
-    segmentLength = windowLength * samplingFreq;
-
     % Progress tracking
     fprintf('Computing features for %d signals...\n', numSignals);
-
     progressMarks = round([0.01, 0.1, 0.25, 0.50, 0.75, 1] * numSignals);
 
     % Iterate over each signal
     for i = 1:numSignals
         signal = signals{i}; % Signal is [channels x timePoints]
-        numWindows = floor(size(signal, 2) / segmentLength);
-        featSequence = zeros(numel(featNames), numWindows); % Preallocate feature matrix for signal
-        
-        % Extract and process windows in vectorized form
-        windows = reshape(signal(:, 1:numWindows * segmentLength), size(signal, 1), segmentLength, numWindows);
-        
+        windows = divideIntoWindows(signal, windowLength, samplingFreq); % Use new function
+        numWindows = size(windows, 3);
+        featSequence = zeros(numel(featNames), numWindows); % Preallocate feature matrix
+
         % Compute features for each window in parallel
         for j = 1:numWindows
             window = windows(:,:,j); % Extract each normalized window
