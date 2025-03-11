@@ -9,7 +9,7 @@ csvFile = '_metadataMER2020.csv';
 signalsFolder = 'signals/';
 
 loadedSignalsPath = fullfile(dataFolder, 'loadedSignals.mat');
-featureDataPath = fullfile(dataFolder, 'featureData.mat');
+featureDataPath = fullfile(dataFolder, 'featureDataMerged.mat');
 
 %% Load or create data and features suitable for model training
 % LOAD OR CREATE SIGNALS AND ANNOTATIONS
@@ -111,6 +111,141 @@ signalIdsFinal = signalIdsFiltered;
 
 % Convert labels to categorical 
 Yfinal = cellfun(@(y) double(y), Yfinal, 'UniformOutput', false);
+
+%% AUC (perfcurve) for feature evaluation
+% Every feature own plot..
+numFeatures = size(Xfinal{1}, 1); % Number of features
+artifactIdx = 5;
+
+figure;
+for featIdx = 1:numFeatures
+    % Collect feature values and corresponding Y labels
+    featureValues = [];
+    labels = [];
+
+    for i = 1:length(Xfinal)
+        featureValues = [featureValues, Xfinal{i}(featIdx, :)]; 
+        labels = [labels, Yfinal{i}(artifactIdx, :)];
+    end
+
+    % Separate data for Y=0 and Y=1
+    feature_0 = log1p(featureValues(labels == 0));
+    feature_1 = log1p(featureValues(labels == 1));
+
+    % Estimate PDFs using kernel density estimation (ksdensity)
+    [pdf_0, x_0] = ksdensity(feature_0);
+    [pdf_1, x_1] = ksdensity(feature_1);
+
+    % Compute AUC
+    [X_ROC, Y_ROC, ~, AUC] = perfcurve(labels, featureValues, 1);
+
+    % Plot histograms
+    subplot(ceil(sqrt(numFeatures)), ceil(sqrt(numFeatures)), featIdx);
+    hold on;
+    histogram(feature_0, 'Normalization', 'pdf', 'FaceColor', 'b', 'FaceAlpha', 0.5);
+    histogram(feature_1, 'Normalization', 'pdf', 'FaceColor', 'r', 'FaceAlpha', 0.5);
+
+    plot(x_0, pdf_0, '-', 'LineWidth', 1);
+    plot(x_1, pdf_1, '--', 'LineWidth', 1);
+    hold off;
+
+    % Title with AUC
+    title(sprintf('Feature %s - AUC: %.2f', featNames{featIdx}, AUC));
+    xlabel('Feature Value');
+    ylabel('Probability');
+    legend({'Y=0', 'Y=1'});
+end
+
+sgtitle('Histograms of Features with AUC'); % Add a main title
+ 
+%% Plot only n top features based on AUC
+numFeatures = size(Xfinal{1}, 1); % Number of features
+artifactIdx = 5;
+numTopFeatures = 7; % Set the number of top features to plot
+
+% Store AUC values for all features
+AUC_values = zeros(numFeatures, 1);
+allFeatureValues = [];
+
+for featIdx = 1:numFeatures
+    % Collect feature values and corresponding Y labels
+    featureValues = [];
+    labels = [];
+
+    for i = 1:length(Xfinal)
+        featureValues = [featureValues, Xfinal{i}(featIdx, :)]; 
+        labels = [labels, Yfinal{i}(artifactIdx, :)];
+    end
+
+    featureValues = (featureValues - mean(featureValues)) / std(featureValues);
+    featureValues(isnan(featureValues)) = 0;
+
+    % Compute AUC
+    [~, ~, ~, AUC] = perfcurve(labels, featureValues, 1);
+    AUC_values(featIdx) = AUC;
+
+    allFeatureValues =  [allFeatureValues; featureValues]; 
+end
+
+
+% Sort features by AUC in descending order and pick top n features
+[~, sortedIdx] = sort(abs(AUC_values - 0.5), 'descend');
+topFeaturesIdx = sortedIdx(1:numTopFeatures);
+
+
+% Plot the PDFs of selected top features
+figure; hold on;
+colors = lines(numTopFeatures); % Generate distinct colors for each feature
+
+legendEntries = cell(2*numTopFeatures, 1); % Preallocate legend entries
+
+for i = 1:numTopFeatures
+    featIdx = topFeaturesIdx(i);
+    topFeatureValues = allFeatureValues(featIdx,:);
+    disp(featNames{featIdx})
+
+    % Separate data for Y=0 and Y=1
+    feature_0 = topFeatureValues(labels == 0);
+    feature_1 = topFeatureValues(labels == 1);
+
+    % Check normality using skewness
+    if abs(skewness(topFeatureValues)) > 2
+        disp(skewness(topFeatureValues))
+        disp('Log transformation')
+        % Handle negative values before log transformation
+        min_value = min([feature_0, feature_1])
+        if min_value <= 0
+            feature_0 = log1p(feature_0 - min_value + 0.01);
+            feature_1 = log1p(feature_1 - min_value + 0.01);
+        else 
+            feature_0 = log1p(feature_0);
+            feature_1 = log1p(feature_1);
+        end
+    end
+
+    if isempty(feature_0) || isempty(feature_1)
+        warning('Skipping feature %d: One of the label groups is empty.', featIdx);
+        continue;
+    end
+
+    % Estimate PDFs using kernel density estimation (ksdensity)
+    [pdf_0, x_0] = ksdensity(feature_0);
+    [pdf_1, x_1] = ksdensity(feature_1);
+
+    plot(x_0, pdf_0, '-', 'Color', colors(i, :), 'LineWidth', 2);
+    plot(x_1, pdf_1, '--', 'Color', colors(i, :), 'LineWidth', 2);
+
+    legendEntries{(2*i-1)} = sprintf('%s 0 - AUC: %.2f', featNames{featIdx}, AUC_values(featIdx));
+    legendEntries{(2*i)} = sprintf('%s 1 - AUC: %.2f', featNames{featIdx}, AUC_values(featIdx));
+end
+
+legend(legendEntries, 'Location', 'Best');
+xlabel('Feature value');
+ylabel('Probability density');
+title('PDFs of 7 top features by AUC, IRRITATED NEURON ARTIFACT');
+hold off;
+
+
 %% Signal indicies by types of artifact
 cleanIndicies = find(cellfun(@(y) any(y(1, :)), Yfinal));
 powerArtifIndices = find(cellfun(@(y) any(y(2, :)), Yfinal));
@@ -186,163 +321,75 @@ sampleFeatNames = sampleFeatNames(selectedFeaturesIdx);
 
 visualizeSignalWithFeatures(sampleSignal, samplingFrequency, sampleNormFeatures, sampleFeatNames, windowLengthSamples, false);
 
-%% AUC (perfcurve) for feature evaluation
+%% Compute new features and merge them with existing ones
+% Extract signal and annotation data
+[signalCellData, annotationsData, signalIds] = extractSignalData(loadedSignals);
 
+% Define feature computation parameters
+featNames = {'energyEntrophy5', 'energyEntrophy15','peakToRMS',...
+'HjorthMobility', 'HjorthComplexity', 'numPeaks', 'meanPeakHeight','peakFreq',...
+'peakRMSRatio', 'avgPeakWidth', 'energyRatio', 'sparseness', 'irregularity', 'zeroUpCrossingPeriod','sigLen'};
+samplingFreq = 24000; % Hz
+windowLength = 1; % seconds
 
-%% FEATURE FUNCTIONS
-function f = compSignalLength(segment)
-    f = sum(abs(diff(segment,1,2)), 2); 
-end
+disp('Computation of new features has started')
 
-function entropyVal = compShannonEntropy(segment, numBins)
-    % Random signals large entropy
-    % H=−∑pi*log2pi
-    if nargin < 2
-        numBins = 5;
-    end
-    energy = segment .^ 2;
-    probDist = histcounts(energy, numBins, 'Normalization', 'probability');
-    probDist(probDist == 0) = []; % Remove zeros to avoid log(0)
-    entropyVal = -sum(probDist .* log2(probDist));
-end
+% Compute features
+[X, Y, featNames] = computeFeaturesForLSTM(signalCellData, annotationsData, windowLength, samplingFreq, featNames);
 
-function f = compPeakToRMS(segment)
-    % Peak to peak vs RMS 
-    % high for peaks
-    peakToPeak = max(segment,[],2) - min(segment,[],2);
-    rmsValue = sqrt(mean(segment.^2,2));
-    f = peakToPeak ./ rmsValue;
-end
+featureDataPath = fullfile(dataFolder, 'featureDataNew.mat');
+% Save feature data
+featureSetNew = struct('X', {X}, ...
+                 'Y', {Y}, ...
+                 'featNames', {featNames}, ...
+                 'signalIds', {signalIds});
+save(featureDataPath, 'featureSetNew', '-v7.3');
+fprintf('Features data saved to %s\n', featureDataPath);
 
-function [numPeaks, meanPeakHeight, peakFreq, peakRMSRatio, avgPeakWidth] = compPowerPeakFeatures(signal, fs, smoothWindowDuration, plotOption)
-    powerSignal = signal.^ 2;
-    % Gaussian smoothing preserves peak structure better than a MA
-    windowSize = round(smoothWindowDuration * fs);
-    gaussKernel = gausswin(windowSize) / sum(gausswin(windowSize)); 
-    smoothSignal = filtfilt(gaussKernel, 1, powerSignal);
+%% LOAD new features and merge them 
+featureDataPath = fullfile(dataFolder, 'featureDataNew.mat');
+load(featureDataPath, 'featureSetNew');
 
-    % Adaptive thresholding based on signal variation
-    baselineNoise = median(abs(smoothSignal - median(smoothSignal))); % Robust estimate
-    minProm = 1.5 * baselineNoise;  % Adaptive threshold
-    minHeight = median(smoothSignal) + 8 * baselineNoise;
-    minDistance = round(fs * 0.004); %s
-    [pks, locs, width, ~] = findpeaks(smoothSignal, ...
-        'MinPeakProminence', minProm, ...
-        'MinPeakHeight', minHeight, ...
-        'MinPeakDistance', minDistance);
-    % Handle case where no peaks are found
-    if isempty(pks)
-        pks = NaN;
-        locs = NaN;
-        numPeaks = 0;
-        meanPeakHeight = 0;
-        avgPeakWidth = 0;
-        peakFreq = 0;
-    else
-        % Features
-        numPeaks = numel(pks);
-        meanPeakHeight = mean(pks, 'omitnan'); 
-        avgPeakWidth = mean(width, 'omitnan');
-        if numPeaks > 1
-            peakIntervals = diff(locs) / fs; 
-            peakFreq = 1 / mean(peakIntervals);
-        else
-            peakFreq = 0;
-        end
-    end
-    peakRMSRatio = meanPeakHeight / rms(smoothSignal);
+XNew = featureSetNew.X;        % Cell array
+YNew = featureSetNew.Y;        % Cell array
+signalIdsNew = featureSetNew.signalIds; % Vector
+featNamesNew = featureSetNew.featNames; % Cell array
 
-    if plotOption
-        timeVector = (0:length(signal)-1) / fs; 
-        figure;
-        plot(timeVector, signal, 'b'); 
-        grid on; hold on;
-        plot(timeVector, smoothSignal, '--r', 'LineWidth', 1); 
-        if numPeaks > 0
-            scatter(timeVector(locs), pks, 'go', 'MarkerFaceColor', 'g');
-        end
-        xlabel('Time (s)');
-        ylabel('Amplitude');
-        title(sprintf(['N Peaks: %d | Mean height: %.2f | Freq: %.2f Hz | Peak RMS Ratio: %.2f\n' ...
-            'Mean width: %.2f'], ...
-            numPeaks, meanPeakHeight, peakFreq, peakRMSRatio, avgPeakWidth));
-        legend({'Original signal', 'Smoothed power signal', 'Peaks'});
-        grid on; hold off;
-    end
-end
+%%
+mergedX = X;  % Initialize with old data
+mergedSignalIds = signalIds;  % Initialize with old signal IDs
 
-function mobility = compHjorthMobility(segment)
-    % Frequency content and smoothness of the signal
-    % High for random noise
-    deriv = diff(segment);
-    mobility = sqrt(var(deriv) / (var(segment) + eps));
-end
-
-function complexity = compHjorthComplexity(segment)
-    % How much the frequency content changes over time
-    % High for irregular signal
-    deriv1 = diff(segment);
-    deriv2 = diff(deriv1);
-    mobility1 = compHjorthMobility(deriv1);
-    mobility2 = compHjorthMobility(deriv2);
-    complexity = mobility2 / (mobility1 + eps);
-end
-
-function sparseness = compSparseness(segment)
-    % Measures how concentrated the energy is in few large values
-    N = length(segment);
-    sparseness = sqrt(sum(segment.^2) / N) / (sum(abs(segment)) / N);
-end
-
-function irregularity = compIrregularityFactor(segment)
-    % Measures how different the signal is from white noise
-    complexity_signal = compHjorthComplexity(segment);
-    white_noise = randn(size(segment)); % Simulated white noise
-    complexity_noise = compHjorthComplexity(white_noise);
-    irregularity = complexity_signal / (complexity_noise + eps);
-end
-
-function zup = compZeroUpCrossingPeriod(segment, fs, smoothWindowDuration)
-    % Computes the Zero Up-Crossing Period (ZUCP)
-    % signal - input signal
-    % fs - sampling frequency
-    % smoothWindow - number of samples for smoothing (set to 1 for no smoothing)
+% Loop through new signal IDs
+for i = 1:length(signalIdsNew)
+    id = signalIdsNew{i};  % Get the current signal ID
     
-    if smoothWindowDuration > 1
-        smoothWindow = round(smoothWindowDuration * fs);
-        b = ones(1, smoothWindow) / smoothWindow; % MA
-        segment = filtfilt(b, 1, segment);
-    end
+    % Find index of matching signalId in old data
+    idxOld = find(cellfun(@(x) isequal(x, id), signalIds), 1);
 
-    % Zero crossings - from negative to positive
-    zeroCrossings = find(segment(1:end-1) < 0 & segment(2:end) >= 0);
-
-    % Compute periods between consecutive zero-crossings
-    if length(zeroCrossings) < 2
-        zup = NaN;
-        return;
-    end
-    periods = diff(zeroCrossings) / fs; % seconds
-    zup = mean(periods);
-end
-
-function energyRatio = computeEnergyRatio(signal, fs, spikeBand)
-    % Computes the energy ratio in a specified spike band relative to total power
-    if nargin < 3
-        spikeBand = [300 3000]; % Default spike band if not provided
-    end
-
-    % Compute power in the spike band
-    spikePower = bandpower(signal, fs, spikeBand);  
-    % Compute total power of the signal
-    totalPower = bandpower(signal, fs, [0 fs/2]); 
-
-    % Prevent division by zero
-    if totalPower == 0
-        energyRatio = 0;
+    if ~isempty(idxOld)  % If the ID exists in old data
+        mergedX{idxOld} = [X{idxOld}; XNew{i}];  % Merge features (concatenate rows)
     else
-        energyRatio = spikePower / totalPower;
+        % If new ID is not found in old set, append it
+        mergedX{end+1} = XNew{i};
+        mergedSignalIds(end+1) = id;
     end
 end
+
+mergedFeatNames = [featNames, featNamesNew];
+fprintf('Unique IDs before merging: %d\n', numel(signalIds));
+fprintf('Unique IDs in new dataset: %d\n', numel(signalIdsNew));
+fprintf('Unique IDs after merging: %d\n', numel(mergedSignalIds));
+
+featureDataPath = fullfile(dataFolder, 'featureDataMerged.mat');
+% Save feature data
+featureSet = struct('X', {mergedX}, ...
+                 'Y', {Y}, ...
+                 'featNames', {mergedFeatNames}, ...
+                 'signalIds', {mergedSignalIds});
+save(featureDataPath, 'featureSet', '-v7.3');
+fprintf('Features data saved to %s\n', featureDataPath);
+
+
+
 
 

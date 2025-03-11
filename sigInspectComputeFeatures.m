@@ -22,10 +22,14 @@ rawFeatNames = {'pow','sigP90','sigP95','sigP99','ksnorm','powDiff','maxCorr'};
 % features from PSD
 psdFeatNames ={'maxNormPSD','stdNormPSD','psdP75','psdP90','psdP95','psdP99','maxAbsDiffPSD','psdF100'...
                 'psdBase','psdPow','psdFreq','psdMaxStep'};
+% new features
+timeFeatNames = {'energyEntrophy5', 'energyEntrophy15','peakToRMS',...
+    'HjorthMobility', 'HjorthComplexity', 'numPeaks', 'meanPeakHeight','peakFreq',...
+    'peakRMSRatio', 'avgPeakWidth', 'energyRatio', 'sparseness', 'irregularity', 'zeroUpCrossingPeriod','sigLen'};
 
             
 if(nargin<2 || isempty(featNames))
-    featNames = [rawFeatNames psdFeatNames];
+    featNames = [rawFeatNames psdFeatNames timeFeatNames];
 end
 % 
 % if(nargin<3 || isempty(samplingFreq))
@@ -49,7 +53,7 @@ NFFT = 2048; % fft length in PSD algorithm
 
 
 % check requested features
-okInds =  ismember(featNames, [rawFeatNames  psdFeatNames]);
+okInds =  ismember(featNames, [rawFeatNames  psdFeatNames timeFeatNames]);
 if(~all(okInds))
     error('unsupported feature(s): %s',sprintf('%s, ',rawFeatNames{~okInds}));
 end
@@ -169,6 +173,56 @@ if(~isempty(psdInds)) % save time if no PSD features are requested
     end
 
 end
+
+% -- compute new time signal features
+timeInds = find(ismember(featNames,timeFeatNames));
+
+if(~isempty(timeInds))
+    
+    segmentNorm = segment./repmat(sqrt(nanmean(segment.^2,2)),1,N); % normalize by RMS
+
+    smoothWindowDuration = 0.005;
+    warning('off', 'signal:findpeaks:largeMinPeakHeight');
+    [numPeaks, meanPeakHeight, peakFreq, peakRMSRatio, avgPeakWidth] = compPowerPeakFeatures(segment, samplingFreq, smoothWindowDuration, false);
+    for fi=1:length(timeInds)
+        fn = featNames{timeInds(fi)};
+        switch(fn)
+            case 'energyEntrophy5'
+                fv = compShannonEntropy(segment, 5);
+            case 'energyEntrophy15'
+                fv = compShannonEntropy(segment, 15);
+            case 'peakToRMS'
+                fv = compPeakToRMS(segmentNorm);
+            case 'HjorthMobility'
+                fv = compHjorthMobility(segment);
+            case 'HjorthComplexity'
+                fv = compHjorthComplexity(segment);
+            case 'numPeaks'
+                fv = numPeaks;
+            case 'meanPeakHeight'
+                fv = meanPeakHeight;
+            case 'peakFreq'
+                fv = peakFreq;
+            case 'peakRMSRatio'
+                fv = peakRMSRatio;
+            case 'avgPeakWidth'
+                fv = avgPeakWidth;
+            case 'energyRatio'
+                fv = computeEnergyRatio(segment, samplingFreq);
+            case 'sparseness'
+                fv = compSparseness(segmentNorm);
+            case 'irregularity'
+                fv = compIrregularityFactor(segmentNorm);
+            case 'zeroUpCrossingPeriod'
+                fv = compZeroUpCrossingPeriod(segment, samplingFreq, smoothWindowDuration);
+            case 'sigLen'
+                fv = compSignalLength(segmentNorm);
+        end
+        % store to output
+        featVals(:,timeInds(fi)) = fv;
+    end
+end
+
 
 % compute value of the maxCorr feature: small windows, max of correlation
 % coefficients between given channel and all other channels
