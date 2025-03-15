@@ -124,8 +124,17 @@ for featIdx = 1:numFeatures
     labels = [];
 
     for i = 1:length(Xfinal)
-        featureValues = [featureValues, Xfinal{i}(featIdx, :)]; 
-        labels = [labels, Yfinal{i}(artifactIdx, :)];
+        % Extract feature values and labels
+        featVals = Xfinal{i}(featIdx, :);
+        labelVals = Yfinal{i}(artifactIdx, :);  % Artifact labels (0 or 1)
+        cleanMask = Yfinal{i}(1, :) == 1;       % Only evaluate where cleanMask is true
+        
+        % Apply the condition: keep 0 only if cleanMask is true, otherwise NaN
+        labelVals(~cleanMask & labelVals == 0) = NaN;
+        
+        % Store values
+        featureValues = [featureValues, featVals]; 
+        labels = [labels, labelVals]; %36200 vs 28773
     end
 
     % Separate data for Y=0 and Y=1
@@ -159,48 +168,71 @@ end
 sgtitle('Histograms of Features with AUC'); % Add a main title
  
 %% Plot only n top features based on AUC
-numFeatures = size(Xfinal{1}, 1); % Number of features
 artifactIdx = 5;
 numTopFeatures = 7; % Set the number of top features to plot
 
-% Store AUC values for all features
-AUC_values = zeros(numFeatures, 1);
-allFeatureValues = [];
+[AUC_values, selectedFeatures_AUC, allFeatureValues, labels] = computeAUC(Xfinal, Yfinal, artifactIdx, numTopFeatures, featNames);
 
-for featIdx = 1:numFeatures
-    % Collect feature values and corresponding Y labels
-    featureValues = [];
-    labels = [];
+%%
+%%% Feature selection with SVM RBF kernel
+% Remove NaN values
+validIdx = ~isnan(labels);
+X_fs = allFeatureValues(:,validIdx)';  % Features (rows: samples, cols: features)
+Y_fs = categorical(labels(validIdx)'); % Labels (0 = clean, 1 = artifact)
 
-    for i = 1:length(Xfinal)
-        featureValues = [featureValues, Xfinal{i}(featIdx, :)]; 
-        labels = [labels, Yfinal{i}(artifactIdx, :)];
+
+costMatrix = [0 1/(sum(double(string(Y_fs)))/length(Y_fs)); 1 0];
+
+[selectedFeatures_FS, accuracy, sensitivity, specificity, precision, f1_score] = featureSelection(X_fs, Y_fs, costMatrix);
+
+
+% Save Results to Excel File
+% Define the Excel file and sheet name
+excelFile = 'Feature_selection_results.xlsx';
+sheetName = 'FS';
+
+% Create a table with all results
+resultsTable = table(artifactIdx, ...
+    strjoin(string(selectedFeatures_AUC), ', '), strjoin(string(featNames(selectedFeatures_AUC)), ', '), ...
+    strjoin(string(selectedFeatures_FS), ', '), strjoin(string(featNames(selectedFeatures_FS)), ', '), ...
+    accuracy, sensitivity, specificity, precision, f1_score, strjoin(string(costMatrix), ', '), ...
+    'VariableNames', {'artifactIdx', 'Selected_AUC_Features', 'Selected_AUC_Features_Names', ...
+                      'Selected_FS_Features', 'Selected_FS_Features_Names', ...
+                      'Accuracy', 'Sensitivity', 'Specificity', 'Precision', 'F1_Score', 'Cost_Matrix'});
+
+% Check if the file already exists
+if isfile(excelFile)
+    % Read existing data
+    try
+        existingData = readtable(excelFile, 'Sheet', sheetName);
+    catch
+        existingData = table(); % If sheet doesn't exist, create an empty table
     end
-
-    featureValues = (featureValues - mean(featureValues)) / std(featureValues);
-    featureValues(isnan(featureValues)) = 0;
-
-    % Compute AUC
-    [~, ~, ~, AUC] = perfcurve(labels, featureValues, 1);
-    AUC_values(featIdx) = AUC;
-
-    allFeatureValues =  [allFeatureValues; featureValues]; 
+    % Append the new results to the existing data
+    updatedTable = [existingData; resultsTable]; 
+else
+    % If the file doesn't exist, just use the new results
+    updatedTable = resultsTable;
 end
 
-
-% Sort features by AUC in descending order and pick top n features
-[~, sortedIdx] = sort(abs(AUC_values - 0.5), 'descend');
-topFeaturesIdx = sortedIdx(1:numTopFeatures);
+% Write the updated table to Excel
+writetable(updatedTable, excelFile, 'Sheet', sheetName);
 
 
-% Plot the PDFs of selected top features
+% Define the dynamically named sheet for the plot
+sheetName = sprintf('Feature_PDFs_%d', artifactIdx); 
+plotFileName = sprintf('Feature_PDFs_%d.png', artifactIdx); % Save the plot as PNG
+
+%%% PLOT THE PDFs OF SELECTED TOP FEATURES
+
+
 figure; hold on;
 colors = lines(numTopFeatures); % Generate distinct colors for each feature
 
 legendEntries = cell(2*numTopFeatures, 1); % Preallocate legend entries
 
 for i = 1:numTopFeatures
-    featIdx = topFeaturesIdx(i);
+    featIdx = selectedFeatures_AUC(i);
     topFeatureValues = allFeatureValues(featIdx,:);
     disp(featNames{featIdx})
 
@@ -213,7 +245,7 @@ for i = 1:numTopFeatures
         disp(skewness(topFeatureValues))
         disp('Log transformation')
         % Handle negative values before log transformation
-        min_value = min([feature_0, feature_1])
+        min_value = min([feature_0, feature_1]);
         if min_value <= 0
             feature_0 = log1p(feature_0 - min_value + 0.01);
             feature_1 = log1p(feature_1 - min_value + 0.01);
@@ -242,10 +274,15 @@ end
 legend(legendEntries, 'Location', 'Best');
 xlabel('Feature value');
 ylabel('Probability density');
-title('PDFs of 7 top features by AUC, IRRITATED NEURON ARTIFACT');
+title(sprintf('PDFs of %d top features by AUC, Artifact %d', numTopFeatures, artifactIdx));
 hold off;
 
+% Save the figure
+saveas(gcf, plotFileName);
+%9.14
+% 14:51
 
+% artif=5 -> 4 10 20
 %% Signal indicies by types of artifact
 cleanIndicies = find(cellfun(@(y) any(y(1, :)), Yfinal));
 powerArtifIndices = find(cellfun(@(y) any(y(2, :)), Yfinal));
