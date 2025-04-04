@@ -15,9 +15,6 @@ function [accuracy, sensitivity, specificity, auc, optimalThreshold] = evaluateM
     %   optimalThreshold: Best threshold per class.
 
     % Convert cell arrays to matrices
-    predictedProbs = cellfun(@(x) x', predictedProbsCell, 'UniformOutput', false);
-    predictedProbs = vertcat(predictedProbs{:});
-
     labels = cellfun(@(x) x', labelsCell, 'UniformOutput', false);
     labels = vertcat(labels{:});
 
@@ -26,48 +23,84 @@ function [accuracy, sensitivity, specificity, auc, optimalThreshold] = evaluateM
     if strcmp(classMode, 'binary')
         % === Binary Classification ===
         positiveClassIdx = 2;  % Assuming second column corresponds to the positive class
-        predictedProbs = predictedProbs(:, positiveClassIdx);
-        labels = labels(:, positiveClassIdx);
+        predictedProbs = cellfun(@(x) x(positiveClassIdx, :)', predictedProbsCell, 'UniformOutput', false);
+        predictedProbs = vertcat(predictedProbs{:});
+        
+        labels = double(string(labels));
 
         % Compute ROC & AUC
         [fpr, tpr, thresholds, auc] = perfcurve(labels, predictedProbs, 1);
 
-        % Optimal threshold (Youden's J-statistic)
-        [~, idx] = max(tpr - fpr); 
+        % % Optimal threshold (Youden's J-statistic)
+        % [~, idx] = max(tpr - fpr); 
+        % optimalThreshold = thresholds(idx);
+
+         % Compute Precision-Recall curve
+        [prec, rec, thresholds, pr_auc] = perfcurve(labels, predictedProbs, 1, 'xCrit', 'reca', 'yCrit', 'prec');
+
+        % Compute F1-score for each threshold
+        f1_scores = 2 * (prec .* rec) ./ (prec + rec);
+        f1_scores(isnan(f1_scores)) = 0; % Handle division by zero
+        
+        % Find the threshold with the highest F1-score
+        [~, idx] = max(f1_scores);
         optimalThreshold = thresholds(idx);
 
         % Apply threshold
-        predictedLabels = double(predictedProbs >= optimalThreshold);
+        predictedLabels = double(double(predictedProbs >= optimalThreshold));
+        
+        confusion_matrix = confusionmat(labels, predictedLabels, 'Order', [0 1]);
+        [accuracy, sensitivity, specificity, precision, f1] = computeEvaluationMetrics(labels, predictedLabels);
 
-        % Compute confusion matrix
-        confusion_matrix = confusionmat(labels, predictedLabels);
-
-        % Compute performance metrics
-        accuracy = sum(diag(confusion_matrix)) / sum(confusion_matrix(:));
-        sensitivity = confusion_matrix(2,2) / sum(confusion_matrix(2,:));
-        specificity = confusion_matrix(1,1) / sum(confusion_matrix(1,:));
 
         % Plot confusion matrix
         figure;
-        subplot(2,1,1)
+        subplot(2,2,1)
         confusionchart(confusion_matrix, ["Clean", "Artifact"], "RowSummary", "row-normalized", ...
             "ColumnSummary", "column-normalized", ...
             "Title", ['Confusion Matrix (Accuracy = ', num2str(accuracy, '%.2f'), ...
-                      ', Threshold = ', num2str(optimalThreshold, '%.2f'), ')']);
+                      ', F1 score = ', num2str(f1, '%.2f'), ')']);
 
-        % Plot ROC curve
-        subplot(2,1,2)
-        plot(fpr, tpr)
+        % Plot ROC curve with optimal threshold
+        subplot(2,2,2)
+        plot(fpr, tpr, 'b', 'LineWidth', 1)
         xlabel('False Positive Rate');
         ylabel('True Positive Rate');
         title(['ROC Curve (AUC = ', num2str(auc, '%.2f'), ')']);
         hold on;
-        plot([0 1], [0 1], '--');
+        plot(fpr(idx), tpr(idx), 'kx', 'MarkerSize', 10, 'MarkerFaceColor', 'k', 'LineWidth', 2);
         hold off;
-        legend('ROC Curve', 'Random Guess');
+        legend('ROC Curve', ['Optimal Threshold = ', num2str(optimalThreshold, '%.2f'), ],'Location', 'Best');
         grid on;
 
+        % Plot probability distribution with threshold
+        subplot(2,2,3);
+        histogram(predictedProbs(labels == 0), 'BinWidth', 0.02, 'FaceColor', 'b', 'FaceAlpha', 0.5);
+        hold on;
+        histogram(predictedProbs(labels == 1), 'BinWidth', 0.02, 'FaceColor', 'r', 'FaceAlpha', 0.5);
+        xline(optimalThreshold, '--k', 'LineWidth', 2);
+        xlabel('Predicted Probability');
+        ylabel('Frequency');
+        title('Class Probability Distribution');
+        legend('Class 0', 'Class 1', 'Threshold','Location', 'Best');
+        grid on;
+
+        % Plot Precision-Recall Curve
+        subplot(2,2,4);
+        plot(rec, prec, 'b', 'LineWidth', 1);
+        xlabel('Recall');
+        ylabel('Precision');
+        title(['Precision-Recall Curve (AUC = ', num2str(pr_auc, '%.2f'), ')']);
+        hold on;
+        plot(rec(idx), prec(idx), 'kx', 'MarkerSize', 10, 'MarkerFaceColor', 'k', 'LineWidth', 2);
+        hold off;
+        grid on;
+        
+
     elseif strcmp(classMode, 'multi')
+        predictedProbs = cellfun(@(x) x', predictedProbsCell, 'UniformOutput', false);
+        predictedProbs = vertcat(predictedProbs{:});
+
         % === Multi-Label Classification ===
         auc = zeros(1, numClasses);
         optimalThreshold = zeros(1, numClasses);

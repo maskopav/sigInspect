@@ -25,7 +25,7 @@ function [net, predictedProbs] = trainAndPredictLSTM(XTrain, YTrain, XVal, YVal,
         % Define common LSTM layers
     layers = [
         sequenceInputLayer(inputSize, "Name", "input")
-        lstmLayer(lstmUnits, "OutputMode", "sequence", "Name", "lstm")
+        bilstmLayer(lstmUnits, "OutputMode", "sequence", "Name", "bilstm")
         dropoutLayer(dropOut, "Name", "dropout")
         fullyConnectedLayer(numClasses, "Name", "fc")
     ];

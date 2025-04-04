@@ -115,7 +115,7 @@ Yfinal = cellfun(@(y) double(y), Yfinal, 'UniformOutput', false);
 %% AUC (perfcurve) for feature evaluation
 % Every feature own plot..
 numFeatures = size(Xfinal{1}, 1); % Number of features
-artifactIdx = 5;
+artifactIdx = 2;
 
 figure;
 for featIdx = 1:numFeatures
@@ -168,10 +168,11 @@ end
 sgtitle('Histograms of Features with AUC'); % Add a main title
  
 %% Plot only n top features based on AUC
-artifactIdx = 5;
+artifactIdx = 2;
 numTopFeatures = 7; % Set the number of top features to plot
 
-[AUC_values, selectedFeatures_AUC, allFeatureValues, labels] = computeAUC(Xfinal, Yfinal, artifactIdx, numTopFeatures, featNames);
+[allFeatureValues, labels] = extractFeatureValues(Xfinal, Yfinal, artifactIdx);
+[AUC_values, selectedFeatures_AUC] = computeAUC(Xfinal, Yfinal, artifactIdx, numTopFeatures, featNames);
 
 %%
 %%% Feature selection with SVM RBF kernel
@@ -180,25 +181,27 @@ validIdx = ~isnan(labels);
 X_fs = allFeatureValues(:,validIdx)';  % Features (rows: samples, cols: features)
 Y_fs = categorical(labels(validIdx)'); % Labels (0 = clean, 1 = artifact)
 
+costWeight = sum(ismember(Y_fs, "0")) / sum(ismember(Y_fs, "1"));
+costWeight = 1;
+costMatrix = [0 costWeight; 1 0];
+criteria = 'youden';
 
-costMatrix = [0 1/(sum(double(string(Y_fs)))/length(Y_fs)); 1 0];
-
-[selectedFeatures_FS, accuracy, sensitivity, specificity, precision, f1_score] = featureSelection(X_fs, Y_fs, costMatrix);
-
+[selectedFeatures_FS, accuracy, sensitivity, specificity, precision, recall, f1, svmModel] = featureSelection(X_fs, Y_fs, costMatrix, criteria);
 
 % Save Results to Excel File
 % Define the Excel file and sheet name
 excelFile = 'Feature_selection_results.xlsx';
 sheetName = 'FS';
+criteria = 'f1';
 
 % Create a table with all results
 resultsTable = table(artifactIdx, ...
     strjoin(string(selectedFeatures_AUC), ', '), strjoin(string(featNames(selectedFeatures_AUC)), ', '), ...
     strjoin(string(selectedFeatures_FS), ', '), strjoin(string(featNames(selectedFeatures_FS)), ', '), ...
-    accuracy, sensitivity, specificity, precision, f1_score, strjoin(string(costMatrix), ', '), ...
+    accuracy, sensitivity, specificity, precision, f1_score, strjoin(string(costMatrix), ', '), string(criteria), ...
     'VariableNames', {'artifactIdx', 'Selected_AUC_Features', 'Selected_AUC_Features_Names', ...
                       'Selected_FS_Features', 'Selected_FS_Features_Names', ...
-                      'Accuracy', 'Sensitivity', 'Specificity', 'Precision', 'F1_Score', 'Cost_Matrix'});
+                      'Accuracy', 'Sensitivity', 'Specificity', 'Precision', 'F1_Score', 'Cost_Matrix', 'Criteria'});
 
 % Check if the file already exists
 if isfile(excelFile)
@@ -224,61 +227,61 @@ sheetName = sprintf('Feature_PDFs_%d', artifactIdx);
 plotFileName = sprintf('Feature_PDFs_%d.png', artifactIdx); % Save the plot as PNG
 
 %%% PLOT THE PDFs OF SELECTED TOP FEATURES
+plotFeatureDistributions(AUC_values, allFeatureValues, labels, featNames, selectedFeatures_AUC, artifactIdx, numTopFeatures)
 
-
-figure; hold on;
-colors = lines(numTopFeatures); % Generate distinct colors for each feature
-
-legendEntries = cell(2*numTopFeatures, 1); % Preallocate legend entries
-
-for i = 1:numTopFeatures
-    featIdx = selectedFeatures_AUC(i);
-    topFeatureValues = allFeatureValues(featIdx,:);
-    disp(featNames{featIdx})
-
-    % Separate data for Y=0 and Y=1
-    feature_0 = topFeatureValues(labels == 0);
-    feature_1 = topFeatureValues(labels == 1);
-
-    % Check normality using skewness
-    if abs(skewness(topFeatureValues)) > 2
-        disp(skewness(topFeatureValues))
-        disp('Log transformation')
-        % Handle negative values before log transformation
-        min_value = min([feature_0, feature_1]);
-        if min_value <= 0
-            feature_0 = log1p(feature_0 - min_value + 0.01);
-            feature_1 = log1p(feature_1 - min_value + 0.01);
-        else 
-            feature_0 = log1p(feature_0);
-            feature_1 = log1p(feature_1);
-        end
-    end
-
-    if isempty(feature_0) || isempty(feature_1)
-        warning('Skipping feature %d: One of the label groups is empty.', featIdx);
-        continue;
-    end
-
-    % Estimate PDFs using kernel density estimation (ksdensity)
-    [pdf_0, x_0] = ksdensity(feature_0);
-    [pdf_1, x_1] = ksdensity(feature_1);
-
-    plot(x_0, pdf_0, '-', 'Color', colors(i, :), 'LineWidth', 2);
-    plot(x_1, pdf_1, '--', 'Color', colors(i, :), 'LineWidth', 2);
-
-    legendEntries{(2*i-1)} = sprintf('%s 0 - AUC: %.2f', featNames{featIdx}, AUC_values(featIdx));
-    legendEntries{(2*i)} = sprintf('%s 1 - AUC: %.2f', featNames{featIdx}, AUC_values(featIdx));
-end
-
-legend(legendEntries, 'Location', 'Best');
-xlabel('Feature value');
-ylabel('Probability density');
-title(sprintf('PDFs of %d top features by AUC, Artifact %d', numTopFeatures, artifactIdx));
-hold off;
-
-% Save the figure
-saveas(gcf, plotFileName);
+% figure; hold on;
+% colors = lines(numTopFeatures); % Generate distinct colors for each feature
+% 
+% legendEntries = cell(2*numTopFeatures, 1); % Preallocate legend entries
+% 
+% for i = 1:numTopFeatures
+%     featIdx = selectedFeatures_AUC(i);
+%     topFeatureValues = allFeatureValues(featIdx,:);
+%     disp(featNames{featIdx})
+% 
+%     % Separate data for Y=0 and Y=1
+%     feature_0 = topFeatureValues(labels == 0);
+%     feature_1 = topFeatureValues(labels == 1);
+% 
+%     % Check normality using skewness
+%     if abs(skewness(topFeatureValues)) > 2
+%         disp(skewness(topFeatureValues))
+%         disp('Log transformation')
+%         % Handle negative values before log transformation
+%         min_value = min([feature_0, feature_1]);
+%         if min_value <= 0
+%             feature_0 = log1p(feature_0 - min_value + 0.01);
+%             feature_1 = log1p(feature_1 - min_value + 0.01);
+%         else 
+%             feature_0 = log1p(feature_0);
+%             feature_1 = log1p(feature_1);
+%         end
+%     end
+% 
+%     if isempty(feature_0) || isempty(feature_1)
+%         warning('Skipping feature %d: One of the label groups is empty.', featIdx);
+%         continue;
+%     end
+% 
+%     % Estimate PDFs using kernel density estimation (ksdensity)
+%     [pdf_0, x_0] = ksdensity(feature_0);
+%     [pdf_1, x_1] = ksdensity(feature_1);
+% 
+%     plot(x_0, pdf_0, '-', 'Color', colors(i, :), 'LineWidth', 2);
+%     plot(x_1, pdf_1, '--', 'Color', colors(i, :), 'LineWidth', 2);
+% 
+%     legendEntries{(2*i-1)} = sprintf('%s 0 - AUC: %.2f', featNames{featIdx}, AUC_values(featIdx));
+%     legendEntries{(2*i)} = sprintf('%s 1 - AUC: %.2f', featNames{featIdx}, AUC_values(featIdx));
+% end
+% 
+% legend(legendEntries, 'Location', 'Best');
+% xlabel('Feature value');
+% ylabel('Probability density');
+% title(sprintf('PDFs of %d top features by AUC, Artifact %d', numTopFeatures, artifactIdx));
+% hold off;
+% 
+% % Save the figure
+% saveas(gcf, plotFileName);
 %9.14
 % 14:51
 

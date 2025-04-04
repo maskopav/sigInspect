@@ -1,33 +1,24 @@
-function [AUC_values, selectedFeatures_AUC, allFeatureValues, labels] = computeAUC(X, Y, artifactIdx, numTopFeatures, featNames)
-    numFeatures = size(X{1}, 1);
+function [AUC_values, selectedFeatures_AUC] = computeAUC(X, Y, artifactIdx, numTopFeatures, featNames)
+    % Extract feature values and labels
+    [allFeatureValues, labels] = extractFeatureValues(X, Y, artifactIdx);
+    
+    numFeatures = size(allFeatureValues, 1);
     AUC_values = zeros(numFeatures, 1);
-    allFeatureValues = [];
     
+    % Standardize feature values
+    allFeatureValues = (allFeatureValues - mean(allFeatureValues, 2)) ./ std(allFeatureValues, 0, 2);
+    allFeatureValues(isnan(allFeatureValues)) = 0;
+    
+    % Compute AUC for each feature
     for featIdx = 1:numFeatures
-        featureValues = [];
-        labels = [];
-        
-        for i = 1:length(X)
-            featVals = X{i}(featIdx, :);
-            labelVals = Y{i}(artifactIdx, :);
-            cleanMask = Y{i}(1, :) == 1;
-            %labelVals(~cleanMask & labelVals == 0) = NaN;
-            
-            featureValues = [featureValues, featVals];
-            labels = [labels, labelVals];
-        end
-        
-        featureValues = (featureValues - mean(featureValues)) / std(featureValues);
-        featureValues(isnan(featureValues)) = 0;
-        
-        [~, ~, ~, AUC] = perfcurve(labels, featureValues, 1);
+        [~, ~, ~, AUC] = perfcurve(labels, allFeatureValues(featIdx, :), 1);
         AUC_values(featIdx) = AUC;
-        
-        allFeatureValues = [allFeatureValues; featureValues];
     end
-    
+
+    % Rank features based on AUC deviation from 0.5
     [~, sortedIdx] = sort(abs(AUC_values - 0.5), 'descend');
     selectedFeatures_AUC = sortedIdx(1:numTopFeatures);
+    
     disp("Selected Top Features:");
     disp(featNames(selectedFeatures_AUC));
 end
