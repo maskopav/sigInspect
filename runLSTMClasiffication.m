@@ -205,20 +205,66 @@ signalLabels = YTest{idx};
 signalArtifNames = 'POW';
 useSpectrogram = true;
 
-
 visualizeSignalWithPredictions(signal, fs, signalProbs, signalLabels, signalArtifNames, useSpectrogram)
 
 %% Soft label analysis
-% Extract second row from each cell and concatenate into a matrix
-secondRowValues = cellfun(@(x) x(2, :), predictedProbs, 'UniformOutput', false);
-secondRowMatrix = vertcat(secondRowValues{:}); 
+allProbs = cellfun(@(x) x(2, :)', predictedProbs, 'UniformOutput', false);
+allProbs = vertcat(allProbs{:});
 
-% Compute average for each column
-avgValues = mean(secondRowMatrix, 1);
+% HISTOGRAM OF SOFT LABELS
+figure;
+histogram(allProbs, 20)
+xlabel('Soft label probability'); ylabel('Count');
+title(['Distribution of soft labels, artif: ', num2str(artifactIdx)])
 
-figure
-plot(1:10,avgValues)
-xlabel('Windows')
-ylabel('Soft label')
+% AVG SOFT LABEL PER WINDOW
+allProbsWindows = cellfun(@(x) x(2, :), predictedProbs, 'UniformOutput', false);
+allProbsWindows = vertcat(allProbsWindows{:}); 
+
+% Get true labels (0 = clean, 1 = artifact)
+allTrueLabels = cellfun(@(x) x(:)', YTest, 'UniformOutput', false);
+allTrueLabels = vertcat(allTrueLabels{:}); 
+allTrueLabels = double(string(allTrueLabels));
+
+[numSamples, numWindows] = size(allProbsWindows);
+[winX, ~] = meshgrid(1:numWindows, 1:numSamples);
+xData = winX(:);
+yData = allProbsWindows(:);
+labels = allTrueLabels(:);  % 0 = clean, 1 = artifact
+
+% Colors
+cmap = [0 0 1; 1 0 0];  % blue = clean, red = artifact
+colorData = cmap(labels + 1, :);  % label+1 for indexing
+
+% Split data by label for curves
+probsCleanMask = allProbsWindows;
+probsCleanMask(allTrueLabels == 1) = NaN;
+probsArtifMask = allProbsWindows;
+probsArtifMask(allTrueLabels == 0) = NaN;
+
+avgClean = mean(probsCleanMask, 1, 'omitnan');
+stdClean = std(probsCleanMask, 0, 1, 'omitnan');
+avgArtifact = mean(probsArtifMask, 1, 'omitnan');
+stdArtifact = std(probsArtifMask, 0, 1, 'omitnan');
+
+% Plotting
+figure; hold on;
+
+% Plot shaded error bars for both groups
+shadedErrorBar(1:numWindows, avgClean, stdClean, 'lineProps', {'b', 'DisplayName', 'Clean avg ± STD'});
+shadedErrorBar(1:numWindows, avgArtifact, stdArtifact, 'lineProps', {'r', 'DisplayName', 'Artifact avg ± STD'});
+
+% Scatter points
+scatter(xData(labels==0), yData(labels==0), 10, 'b', 'filled', 'MarkerFaceAlpha', 0.3, 'DisplayName', 'Clean samples');
+scatter(xData(labels==1), yData(labels==1), 10, 'r', 'filled', 'MarkerFaceAlpha', 0.3, 'DisplayName', 'Artifact samples');
+hold off
+
+% Labels and legend
+xlabel('Windows'); ylabel('Soft label');
 ylim([0 1])
+title('Soft labels per window');
+legend('Location', 'best');
+grid on;
+
+
 
