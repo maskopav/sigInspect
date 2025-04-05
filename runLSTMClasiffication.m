@@ -103,88 +103,17 @@ if strcmp(mode, 'multi')
     disp(['Removed ', num2str(sum(artifactTypeToDeleteIdx)), ' signals containing unwanted artifact types']);
 end
 
-
-% Final variables for the model
-Xfinal = Xfiltered;
-Yfinal = Yfiltered;
-signalIdsFinal = signalIdsFiltered;
-
-% Convert labels to categorical 
-Yfinal = cellfun(@(y) double(y), Yfinal, 'UniformOutput', false);
-
-
 %% Data split for model training
 ratios = struct('train', 0.6, 'val', 0.2, 'test', 0.2);
 [trainIdx, valIdx, testIdx] = splitDataByPatients(signalIdsFiltered, ratios);
-
-% Access the splits
-XTrain = Xfinal(trainIdx, :);
-YTrain = Yfinal(trainIdx, :);
-XVal = Xfinal(valIdx, :);
-YVal = Yfinal(valIdx, :);
-XTest = Xfinal(testIdx, :);
-YTest = Yfinal(testIdx, :);
 
 % Display results
 fprintf('Number of training samples: %d\n', numel(trainIdx));
 fprintf('Number of validation samples: %d\n', numel(valIdx));
 fprintf('Number of test samples: %d\n', numel(testIdx));
 
-%%
-excelFile = 'Feature_selection_results_correct.xlsx';
-sheetName = 'FS';
-criteriaList = {'youden', 'f1', 'recall'};
 
-XTrainFs = [XTrain; XVal];
-YTrainFs = [YTrain; YVal];
-
-for artifactIdx=4:4
-    disp(artifactIdx)
-
-    % Data preprocessing
-    [allFeatureValues, labels] = extractFeatureValues(XTrainFs, YTrainFs, artifactIdx);
-    X_fs = allFeatureValues';  % Features (rows: samples, cols: features)
-    Y_fs = categorical(labels'); % Labels (0 = clean, 1 = artifact)
-
-    alpha = 1;
-    classWeight_higher = computeClassWeights(Yfinal, alpha);
-    alpha = 0.8;
-    classWeight_mid = computeClassWeights(Yfinal, alpha);
-    alpha = 0.6;
-    classWeight_lower = computeClassWeights(Yfinal, alpha);
-    costWeights = [classWeight_lower, classWeight_mid, classWeight_higher];
-    for costIdx = 1:length(costWeights)
-        costMatrix = [0 1; costWeights(costIdx) 0];
-    
-        for idx = 1:length(criteriaList)
-            criteria = criteriaList{idx}; 
-            disp(criteria)
-
-            % Feature selection with SVM RBF kernel
-            [selectedFeatures_FS, accuracy_train, sensitivity_train, specificity_train, precision_train, f1_train, svmModel] = featureSelection(X_fs, Y_fs, costMatrix, criteria);
-            % Predict on unseen dataset
-            [allFeatureValuesTest, labelsTest] = extractFeatureValues(XTest, YTest, artifactIdx);
-            allFeatureValuesTest = allFeatureValuesTest(selectedFeatures_FS, :);
-
-            predictions = predict(svmModel, allFeatureValuesTest');
-            [accuracy_unseen, sensitivity_unseen, specificity_unseen, precision_unseen, f1_unseen] = computeEvaluationMetrics(categorical(labelsTest'), predictions);
-            
-            % Save Results to Excel File
-            resultsTable = table(artifactIdx, ...
-                strjoin(string(selectedFeatures_FS), ', '), strjoin(string(featNames(selectedFeatures_FS)), ', '), ...
-                accuracy_train, sensitivity_train, specificity_train, precision_train, f1_train, ...
-                accuracy_unseen, sensitivity_unseen, specificity_unseen, precision_unseen, f1_unseen, ...
-                strjoin(string(costMatrix), ', '), string(criteria), ...
-                'VariableNames', {'artifactIdx', 'Selected_FS_Features', 'Selected_FS_Features_Names', ...
-                                  'Accuracy_Train', 'Sensitivity_Train', 'Specificity_Train', 'Precision_Train', 'F1_Score_Train', ...
-                                  'Accuracy_Unseen', 'Sensitivity_Unseen', 'Specificity_Unseen', 'Precision_Unseen', 'F1_Score_Unseen', ...
-                                  'Cost_Matrix', 'Criteria'});
-            saveResultsToExcel(excelFile, sheetName, resultsTable);
-        end
-    end
-end
-
-%% Feature selection - selected features by featureSelection using sequentialfs and svm model
+%% Feature selection - selected features by runFeatureSelection script using sequentialfs and svm model
 artifactIdx = 3;
 selectedFeatures_FS = [14, 16, 20, 30, 31, 32];
 Xselected = cellfun(@(x) x(selectedFeatures_FS, :), Xfiltered, 'UniformOutput', false);
@@ -194,6 +123,8 @@ Yselected = cellfun(@(y) y(artifactIdx, :), Yfiltered, 'UniformOutput', false);
 Xfinal = Xselected;
 Yfinal = Yselected;
 Yfinal = cellfun(@(y) categorical(double(y(:)')), Yfinal, 'UniformOutput', false);
+signalIdsFinal = signalIdsFiltered;
+
 % Access the splits
 XTrain = Xfinal(trainIdx, :);
 YTrain = Yfinal(trainIdx, :);
@@ -212,6 +143,7 @@ if strcmp(mode, 'binary')
     alpha = 0.6;
     classWeight = computeClassWeights(Yfinal, alpha)
     classWeights = [1, classWeight]; % Only for binary classification
+    numClasses = 2;
 elseif strcmp(mode, 'multi')
     numClasses = maxN-1;
     %classWeights = %ones(1, numClasses); 
@@ -233,10 +165,9 @@ validationPatience = 5;            % Early stopping if no improvement for 5 epoc
     lstmUnits, dropOut, maxEpochs, miniBatchSize, ...
     initialLearnRate, validationFrequency, validationPatience, mode);
 %% Classify unseen data
-
 [accuracy, sensitivity, specificity, auc, optimalThreshold] = evaluateModel(predictedProbs, YTest, mode)
 
-%% Analysis of signals of artifact 2 POW - wierd shape of AUC curve
+%% Analysis of signals in case of wierd shape of AUC curve
 % Windows corresponding to a False Positive Rate (FPR) between 0.1 and 0.2 
 positiveClassIdx = 2;  % Assuming second column corresponds to the positive class
 probsPos = cellfun(@(x) x(positiveClassIdx, :)', predictedProbs, 'UniformOutput', false);
@@ -277,20 +208,17 @@ useSpectrogram = true;
 
 visualizeSignalWithPredictions(signal, fs, signalProbs, signalLabels, signalArtifNames, useSpectrogram)
 
-%%
+%% Soft label analysis
 % Extract second row from each cell and concatenate into a matrix
 secondRowValues = cellfun(@(x) x(2, :), predictedProbs, 'UniformOutput', false);
-secondRowMatrix = vertcat(secondRowValues{:});  % Convert cell array to matrix
+secondRowMatrix = vertcat(secondRowValues{:}); 
 
 % Compute average for each column
 avgValues = mean(secondRowMatrix, 1);
-avgValues = [avgValues; 0.3195    0.2148    0.1606    0.1412    0.1200    0.1082    0.0910    0.0933    0.0821    0.0732];
 
 figure
 plot(1:10,avgValues)
-% Display results
-% disp('Average values for each column in the second row:');
-% disp(avgValues);
-% 
-
+xlabel('Windows')
+ylabel('Soft label')
+ylim([0 1])
 

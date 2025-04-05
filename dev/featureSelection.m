@@ -21,12 +21,9 @@ function [selectedFeatures_FS, accuracy, sensitivity, specificity, precision, f1
 
     % Perform 5-fold cross-validation on the training data
     cvSVM = crossval(svmModel, 'KFold', 5);
-    accuracy = 1 - kfoldLoss(cvSVM);
-    disp(accuracy)
 
     % Compute evaluation metrics on the training data
     predictions = kfoldPredict(cvSVM);
 
     [accuracy, sensitivity, specificity, precision, f1] = computeEvaluationMetrics(Y_fs, predictions);
-    disp(accuracy)
 end

@@ -130,7 +130,7 @@ fprintf('Number of training samples: %d\n', numel(trainIdx));
 fprintf('Number of validation samples: %d\n', numel(valIdx));
 fprintf('Number of test samples: %d\n', numel(testIdx));
 
-%%
+%
 excelFile = 'FS_results.xlsx';
 sheetName = 'FS';
 % Youden and recall similar results -> only Youden and F1 score
@@ -139,17 +139,24 @@ criteriaList = {'youden', 'f1'};
 XTrainFs = [XTrain; XVal];
 YTrainFs = [YTrain; YVal];
 
-for artifactIdx=1:1
+%%% artifactIdx
+%1   'clean'    'CLN'
+%2    'power'    'POW'
+%3    'baseline'    'BASE'
+%4    'frequency artifact'    'FREQ'
+%5    'irritated neuron'    'IRIT'
+%6    'other'    'OTHR'
+%7    'artifact'    'ARTIF'
+
+for artifactIdx=2:4
     disp(artifactIdx)
 
     % Data preprocessing
-    [allFeatureValues, labels] = extractFeatureValues(XTrainFs, YTrainFs, artifactIdx);
-    X_fs = allFeatureValues';  % Features (rows: samples, cols: features)
-    Y_fs = categorical(labels'); % Labels (0 = clean, 1 = artifact)
+    [X_fs, Y_fs] = extractFeatureValues(XTrainFs, YTrainFs, artifactIdx);
 
     % Subset for testing
-    X_fs = X_fs(1:1000,:);
-    Y_fs = Y_fs(1:1000);
+    % X_fs = X_fs(1:1000,:);
+    % Y_fs = Y_fs(1:1000);
 
     % Class weights - three different weights 
     YTrainFsArtif = cellfun(@(y) y(artifactIdx, :), YTrainFs, 'UniformOutput',false);
@@ -166,16 +173,15 @@ for artifactIdx=1:1
     
         for idx = 1:length(criteriaList)
             criteria = criteriaList{idx}; 
-            disp(criteria)
+            disp(['Evaluating using criterion: ', criteria])
 
             % Feature selection with SVM RBF kernel
             [selectedFeatures_FS, accuracy_train, sensitivity_train, specificity_train, precision_train, f1_train, svmModel] = featureSelection(X_fs, Y_fs, costMatrix, criteria);
             % Predict on unseen dataset
-            [allFeatureValuesTest, labelsTest] = extractFeatureValues(XTest, YTest, artifactIdx);
-            allFeatureValuesTest = allFeatureValuesTest(selectedFeatures_FS, :);
+            [X_fs_unseen, Y_fs_unseen] = extractFeatureValues(XTest, YTest, artifactIdx);
 
-            predictions = predict(svmModel, allFeatureValuesTest');
-            [accuracy_unseen, sensitivity_unseen, specificity_unseen, precision_unseen, f1_unseen] = computeEvaluationMetrics(categorical(labelsTest'), predictions);
+            predictions = predict(svmModel, X_fs_unseen);
+            [accuracy_unseen, sensitivity_unseen, specificity_unseen, precision_unseen, f1_unseen] = computeEvaluationMetrics(Y_fs_unseen, predictions);
             
             % Save Results to Excel File
             resultsTable = table(artifactIdx, ...
