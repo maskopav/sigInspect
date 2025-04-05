@@ -1,14 +1,14 @@
-function [selectedFeatures_FS, accuracy, sensitivity, specificity, precision, f1, svmModel] = featureSelection(X_fs, Y_fs, costMatrix, criteria)
+function [selectedFeatures_FS, evalMetrics, svmModel] = featureSelection(X_fs, Y_fs, costMatrix, criteria)
     % Define evaluation function based on chosen criterion
     switch lower(criteria)
         case 'f1'
             evalFunc = @(trainX, trainY, testX, testY) 1 - computeF1Score(trainX, trainY, testX, testY, costMatrix);
         case 'youden'
             evalFunc = @(trainX, trainY, testX, testY) 1 - computeYoudenIndex(trainX, trainY, testX, testY, costMatrix);
-        case 'recall'
-            evalFunc = @(trainX, trainY, testX, testY) 1 - computeRecall(trainX, trainY, testX, testY, costMatrix);
+        case 'pr_auc'
+            evalFunc = @(trainX, trainY, testX, testY) 1 - computePRCurveAUC(trainX, trainY, testX, testY, costMatrix);
         otherwise
-            error('Invalid criterion. Choose from "f1", "youden", or "balanced_accuracy".');
+            error('Invalid criterion. Choose from "f1", "youden", or "pr_auc".');
     end
 
     % Perform forward feature selection using 5-fold cross-validation
@@ -25,5 +25,5 @@ function [selectedFeatures_FS, accuracy, sensitivity, specificity, precision, f1
     % Compute evaluation metrics on the training data
     predictions = kfoldPredict(cvSVM);
 
-    [accuracy, sensitivity, specificity, precision, f1] = computeEvaluationMetrics(Y_fs, predictions);
+    evalMetrics = computeEvaluationMetrics(Y_fs, predictions);
 end

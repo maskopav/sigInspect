@@ -125,19 +125,18 @@ YVal = Yfinal(valIdx, :);
 XTest = Xfinal(testIdx, :);
 YTest = Yfinal(testIdx, :);
 
+
 % Display results
 fprintf('Number of training samples: %d\n', numel(trainIdx));
 fprintf('Number of validation samples: %d\n', numel(valIdx));
 fprintf('Number of test samples: %d\n', numel(testIdx));
 
-%
+%%
 excelFile = 'FS_results.xlsx';
 sheetName = 'FS';
 % Youden and recall similar results -> only Youden and F1 score
-criteriaList = {'youden', 'f1'};
+criteriaList = {'f1', 'youden'};
 
-XTrainFs = [XTrain; XVal];
-YTrainFs = [YTrain; YVal];
 
 %%% artifactIdx
 %1   'clean'    'CLN'
@@ -152,20 +151,20 @@ for artifactIdx=2:4
     disp(artifactIdx)
 
     % Data preprocessing
-    [X_fs, Y_fs] = extractFeatureValues(XTrainFs, YTrainFs, artifactIdx);
+    [X_fs_train, Y_fs_train] = extractFeatureValues(XTrain, YTrain, artifactIdx);
 
     % Subset for testing
-    % X_fs = X_fs(1:1000,:);
-    % Y_fs = Y_fs(1:1000);
+    % X_fs_train = X_fs_train(1:1000,:);
+    % Y_fs_train = Y_fs_train(1:1000);
 
     % Class weights - three different weights 
-    YTrainFsArtif = cellfun(@(y) y(artifactIdx, :), YTrainFs, 'UniformOutput',false);
+    YFsArtif = cellfun(@(y) y(artifactIdx, :), YTrain, 'UniformOutput',false);
     alpha = 1;
-    classWeight_higher = computeClassWeights(YTrainFsArtif, alpha);
+    classWeight_higher = computeClassWeights(YFsArtif, alpha);
     alpha = 0.8;
-    classWeight_mid = computeClassWeights(YTrainFsArtif, alpha);
+    classWeight_mid = computeClassWeights(YFsArtif, alpha);
     alpha = 0.6;
-    classWeight_lower = computeClassWeights(YTrainFsArtif, alpha);
+    classWeight_lower = computeClassWeights(YFsArtif, alpha);
 
     costWeights = [classWeight_lower, classWeight_mid, classWeight_higher];
     for costIdx = 1:length(costWeights)
@@ -176,23 +175,31 @@ for artifactIdx=2:4
             disp(['Evaluating using criterion: ', criteria])
 
             % Feature selection with SVM RBF kernel
-            [selectedFeatures_FS, accuracy_train, sensitivity_train, specificity_train, precision_train, f1_train, svmModel] = featureSelection(X_fs, Y_fs, costMatrix, criteria);
-            % Predict on unseen dataset
+            [selectedFeatures_FS, evalMetrics_train , svmModel] = featureSelection(X_fs_train, Y_fs_train, costMatrix, criteria);
+
+            % Predict on validation dataset, help to select cost function
+            [X_fs_val, Y_fs_val] = extractFeatureValues(XVal, YVal, artifactIdx);
+            X_fs_val = X_fs_val(:, selectedFeatures_FS);
+            predictions = predict(svmModel, X_fs_val);
+            evalMetrics_val = computeEvaluationMetrics(Y_fs_val, predictions);
+            
+            % Predict on unseen dataset, for feature comparison with LSTM
             [X_fs_unseen, Y_fs_unseen] = extractFeatureValues(XTest, YTest, artifactIdx);
             X_fs_unseen = X_fs_unseen(:, selectedFeatures_FS);
-
             predictions = predict(svmModel, X_fs_unseen);
-            [accuracy_unseen, sensitivity_unseen, specificity_unseen, precision_unseen, f1_unseen] = computeEvaluationMetrics(Y_fs_unseen, predictions);
+            evalMetrics_unseen = computeEvaluationMetrics(Y_fs_unseen, predictions);
             
             % Save Results to Excel File
             resultsTable = table(artifactIdx, ...
                 strjoin(string(selectedFeatures_FS), ', '), strjoin(string(featNames(selectedFeatures_FS)), ', '), ...
-                accuracy_train, sensitivity_train, specificity_train, precision_train, f1_train, ...
-                accuracy_unseen, sensitivity_unseen, specificity_unseen, precision_unseen, f1_unseen, ...
+                evalMetrics_train.accuracy, evalMetrics_train.sensitivity, evalMetrics_train.specificity, evalMetrics_train.precision, evalMetrics_train.f1, evalMetrics_val.youden, ...
+                evalMetrics_val.accuracy, evalMetrics_val.sensitivity, evalMetrics_val.specificity, evalMetrics_val.precision, evalMetrics_val.f1, evalMetrics_val.youden, ...
+                evalMetrics_unseen.accuracy, evalMetrics_unseen.sensitivity, evalMetrics_unseen.specificity, evalMetrics_unseen.precision, evalMetrics_unseen.f1, evalMetrics_val.youden, ...
                 strjoin(string(costMatrix), ', '), string(criteria), ...
                 'VariableNames', {'artifactIdx', 'Selected_FS_Features', 'Selected_FS_Features_Names', ...
-                                  'Accuracy_Train', 'Sensitivity_Train', 'Specificity_Train', 'Precision_Train', 'F1_Score_Train', ...
-                                  'Accuracy_Unseen', 'Sensitivity_Unseen', 'Specificity_Unseen', 'Precision_Unseen', 'F1_Score_Unseen', ...
+                                  'Accuracy_Train', 'Sensitivity_Train', 'Specificity_Train', 'Precision_Train', 'F1_Score_Train', 'Youden_Train', ...
+                                  'Accuracy_Validation', 'Sensitivity_Validation', 'Specificity_Validation', 'Precision_Validation', 'F1_Score_Validation', 'Youden_Validation', ...
+                                  'Accuracy_Unseen', 'Sensitivity_Unseen', 'Specificity_Unseen', 'Precision_Unseen', 'F1_Score_Unseen', 'Youden_Unseen', ...
                                   'Cost_Matrix', 'Criteria'});
             saveResultsToExcel(excelFile, sheetName, resultsTable);
         end

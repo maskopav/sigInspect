@@ -10,7 +10,9 @@ function youdenIndex = computeYoudenIndex(trainX, trainY, testX, testY, costMatr
         predictions = double(predictions);
     end
  
-    [~, sensitivity, specificity, ~, ~] = computeEvaluationMetrics(testY, predictions);
+    evalMetrics = computeEvaluationMetrics(testY, predictions);
+    sensitivity = evalMetrics.sensitivity;
+    specificity = evalMetrics.specificity;
     youdenIndex = sensitivity + specificity - 1;
 end
 

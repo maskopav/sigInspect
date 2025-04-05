@@ -1,4 +1,4 @@
-function [accuracy, sensitivity, specificity, precision, f1] = computeEvaluationMetrics(labels, predictions)
+function metrics = computeEvaluationMetrics(labels, predictions)
     % Convert both labels and predictions to categorical or numeric type
     if iscategorical(labels)
         labels = double(string(labels)); % Convert categorical labels to numeric
@@ -12,6 +12,8 @@ function [accuracy, sensitivity, specificity, precision, f1] = computeEvaluation
     if any(uniquePreds ~= 0 & uniquePreds ~= 1)
         error("Predictions contain non-binary values: %s", mat2str(uniquePreds));
     end
+
+    metrics = struct();
 
     % Ensure confusion matrix has correct class order: 0 (negative), 1 (positive)
     confMat = confusionmat(labels, predictions, 'Order', [0 1]);
@@ -33,4 +35,11 @@ function [accuracy, sensitivity, specificity, precision, f1] = computeEvaluation
     specificity(isnan(specificity)) = 0;
     precision(isnan(precision)) = 0;
     f1(isnan(f1)) = 0;
+
+    metrics.accuracy = accuracy;
+    metrics.sensitivity = sensitivity;
+    metrics.specificity = specificity;
+    metrics.precision = precision;
+    metrics.f1 = f1;
+    metrics.youden = metrics.sensitivity + metrics.specificity - 1;
 end
