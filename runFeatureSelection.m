@@ -179,6 +179,7 @@ for artifactIdx=2:4
             [selectedFeatures_FS, accuracy_train, sensitivity_train, specificity_train, precision_train, f1_train, svmModel] = featureSelection(X_fs, Y_fs, costMatrix, criteria);
             % Predict on unseen dataset
             [X_fs_unseen, Y_fs_unseen] = extractFeatureValues(XTest, YTest, artifactIdx);
+            X_fs_unseen = X_fs_unseen(:, selectedFeatures_FS);
 
             predictions = predict(svmModel, X_fs_unseen);
             [accuracy_unseen, sensitivity_unseen, specificity_unseen, precision_unseen, f1_unseen] = computeEvaluationMetrics(Y_fs_unseen, predictions);
