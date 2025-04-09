@@ -124,18 +124,21 @@ XVal = Xfinal(valIdx, :);
 YVal = Yfinal(valIdx, :);
 XTest = Xfinal(testIdx, :);
 YTest = Yfinal(testIdx, :);
-
+[trainIdx, valIdx, testIdx] = splitDataByPatients(signalIdsFiltered, ratios);
+[trainPatientIds, trainUniquePatients] = getPatientIds(signalIds(trainIdx));
+[valPatientIds, valUniquePatients] = getPatientIds(signalIds(valIdx));
+[testPatientIds, testUniquePatients] = getPatientIds(signalIds(testIdx));
 
 % Display results
-fprintf('Number of training samples: %d\n', numel(trainIdx));
-fprintf('Number of validation samples: %d\n', numel(valIdx));
-fprintf('Number of test samples: %d\n', numel(testIdx));
+fprintf('Number of training samples: %d, number of unique patients: %d\n', numel(trainIdx), trainUniquePatients);
+fprintf('Number of validation samples: %d, number of unique patients: %d\n', numel(valIdx), valUniquePatients);
+fprintf('Number of test samples: %d, number of unique patients: %d\n', numel(testIdx), testUniquePatients);
 
 %%
 excelFile = 'FS_results.xlsx';
 sheetName = 'FS';
 % Youden and recall similar results -> only Youden and F1 score
-criteriaList = {'f1', 'youden'};
+criteriaList = {'youden'};
 
 
 %%% artifactIdx
@@ -147,7 +150,7 @@ criteriaList = {'f1', 'youden'};
 %6    'other'    'OTHR'
 %7    'artifact'    'ARTIF'
 
-for artifactIdx=2:4
+for artifactIdx=2:2 %4
     disp(artifactIdx)
 
     % Data preprocessing
@@ -159,14 +162,14 @@ for artifactIdx=2:4
 
     % Class weights - three different weights 
     YFsArtif = cellfun(@(y) y(artifactIdx, :), YTrain, 'UniformOutput',false);
-    alpha = 1;
-    classWeight_higher = computeClassWeights(YFsArtif, alpha);
-    alpha = 0.8;
-    classWeight_mid = computeClassWeights(YFsArtif, alpha);
-    alpha = 0.6;
-    classWeight_lower = computeClassWeights(YFsArtif, alpha);
+    % alpha = 1;
+    % classWeight_higher = computeClassWeights(YFsArtif, alpha);
+    % alpha = 0.8;
+    % classWeight_mid = computeClassWeights(YFsArtif, alpha);
+    % alpha = 0.6;
+    % classWeight_lower = computeClassWeights(YFsArtif, alpha);
 
-    costWeights = [classWeight_lower, classWeight_mid, classWeight_higher];
+    costWeights = [1]; %classWeight_lower, classWeight_mid, classWeight_higher];
     for costIdx = 1:length(costWeights)
         costMatrix = [0 1; costWeights(costIdx) 0];
     
@@ -175,7 +178,7 @@ for artifactIdx=2:4
             disp(['Evaluating using criterion: ', criteria])
 
             % Feature selection with SVM RBF kernel
-            [selectedFeatures_FS, evalMetrics_train , svmModel] = featureSelection(X_fs_train, Y_fs_train, costMatrix, criteria);
+            [selectedFeatures_FS, evalMetrics_train , svmModel] = featureSelection(X_fs_train, Y_fs_train, costMatrix, criteria, trainPatientIds);
 
             % Predict on validation dataset, help to select cost function
             [X_fs_val, Y_fs_val] = extractFeatureValues(XVal, YVal, artifactIdx);

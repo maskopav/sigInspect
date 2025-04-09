@@ -1,4 +1,4 @@
-function [selectedFeatures_FS, evalMetrics, svmModel] = featureSelection(X_fs, Y_fs, costMatrix, criteria)
+function [selectedFeatures_FS, evalMetrics, svmModel] = featureSelection(X_fs, Y_fs, costMatrix, criteria, patientIds)
     % Define evaluation function based on chosen criterion
     switch lower(criteria)
         case 'f1'
@@ -13,14 +13,26 @@ function [selectedFeatures_FS, evalMetrics, svmModel] = featureSelection(X_fs, Y
 
     % Perform forward feature selection using 5-fold cross-validation
     opts = statset('display', 'iter');
-    [rankedFeatures, ~] = sequentialfs(evalFunc, X_fs, Y_fs, 'cv', 5, 'options', opts);
+
+    % Each patient has 10 samples
+    expandedPatientIds = repelem(patientIds, 10);
+
+    cv = cvpartition(expandedPatientIds, 'KFold', 5);  % Grouped by patient ID
+    fprintf('Size of X_fs: %d rows\n', size(X_fs, 1));
+    fprintf('Size of Y_fs: %d rows\n', length(Y_fs));
+    fprintf('cv.NumObservations: %d\n', cv.NumObservations);
+
+    
+
+    [rankedFeatures, ~] = sequentialfs(evalFunc, X_fs, Y_fs, 'cv', cv, 'options', opts);
+
+    % [rankedFeatures, ~] = sequentialfs(evalFunc, X_fs, Y_fs, 'cv', 5, 'options', opts);
     selectedFeatures_FS = find(rankedFeatures);
 
     % Train the final model on the full dataset with selected features
     svmModel = fitcsvm(X_fs(:, selectedFeatures_FS), Y_fs, 'KernelFunction', 'RBF', 'Cost', costMatrix);
 
-    % Perform 5-fold cross-validation on the training data
-    cvSVM = crossval(svmModel, 'KFold', 5);
+    cvSVM = crossval(svmModel, 'CVPartition', cv);
 
     % Compute evaluation metrics on the training data
     predictions = kfoldPredict(cvSVM);
