@@ -1,4 +1,4 @@
-function [accuracy, sensitivity, specificity, auc, optimalThreshold] = evaluateModel(predictedProbsCell, labelsCell, classMode)
+function [evalMetrics, auc, optimalThreshold] = evaluateModel(predictedProbsCell, labelsCell, classMode)
     % Evaluate a classification model for binary and multi-label cases.
     % Handles cell inputs where each cell contains a matrix of values.
     %
@@ -50,16 +50,15 @@ function [accuracy, sensitivity, specificity, auc, optimalThreshold] = evaluateM
         predictedLabels = double(double(predictedProbs >= optimalThreshold));
         
         confusion_matrix = confusionmat(labels, predictedLabels, 'Order', [0 1]);
-        [accuracy, sensitivity, specificity, precision, f1] = computeEvaluationMetrics(labels, predictedLabels);
-
+        evalMetrics = computeEvaluationMetrics(labels, predictedLabels);
 
         % Plot confusion matrix
         figure;
         subplot(2,2,1)
         confusionchart(confusion_matrix, ["Clean", "Artifact"], "RowSummary", "row-normalized", ...
             "ColumnSummary", "column-normalized", ...
-            "Title", ['Confusion Matrix (Accuracy = ', num2str(accuracy, '%.2f'), ...
-                      ', F1 score = ', num2str(f1, '%.2f'), ')']);
+            "Title", ['Confusion Matrix (Accuracy = ', num2str(evalMetrics.accuracy, '%.2f'), ...
+                      ', F1 score = ', num2str(evalMetrics.f1, '%.2f'), ')']);
 
         % Plot ROC curve with optimal threshold
         subplot(2,2,2)
