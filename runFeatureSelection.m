@@ -166,7 +166,7 @@ for artifactIdx=2:4
 
     cleanToArtifactRatios = [2, 2.5, 3];
     for cleanToArtifactRatio = 1:length(cleanToArtifactRatios)
-        %costMatrix = [0 1; costWeights(costIdx) 0];
+        costMatrix = [0 1; 1 0];
     
         for idx = 1:length(criteriaList)
             criteria = criteriaList{idx}; 
