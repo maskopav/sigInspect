@@ -68,7 +68,7 @@ function [selectedFeatures_FS, evalMetrics, svmModel] = featureSelectionWithUnde
                 % tabulate(trainY)
 
                 % Perform undersampling on training data at patient level
-                [balancedTrainX, balancedTrainY] = undersampleByPatient(trainX, trainY, trainPatientIds, cleanToArtifactRatio);
+                [balancedTrainX, balancedTrainY] = undersampleByRatio(trainX, trainY, trainPatientIds, cleanToArtifactRatio);
                 % fprintf('After undersampling, fold: %d\n', fold);
                 % tabulate(balancedTrainY)
 
