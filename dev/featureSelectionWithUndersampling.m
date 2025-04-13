@@ -10,10 +10,8 @@ function [selectedFeatures_FS, evalMetrics, svmModel] = featureSelectionWithUnde
             baseEvalFunc = @(trainX, trainY, testX, testY) 1 - computeF1Score(trainX, trainY, testX, testY, costMatrix);
         case 'youden'
             baseEvalFunc = @(trainX, trainY, testX, testY) 1 - computeYoudenIndex(trainX, trainY, testX, testY, costMatrix);
-        case 'pr_auc'
-            baseEvalFunc = @(trainX, trainY, testX, testY) 1 - computePRCurveAUC(trainX, trainY, testX, testY, costMatrix);
         otherwise
-            error('Invalid criterion. Choose from "f1", "youden", or "pr_auc".');
+            error('Invalid criterion. Choose from "f1" or "youden".');
     end
     
     % Create a container for the selected features
@@ -116,10 +114,7 @@ function [selectedFeatures_FS, evalMetrics, svmModel] = featureSelectionWithUnde
     svmProbModel = fitPosterior(svmModel);
     % To make predictions with soft labels (probabilities)
     [~, probScores] = predict(svmProbModel, X_fs(:, selectedFeatures_FS));
-    artifProbs = probScores(:,2);
-    % Compute precision and recall at various thresholds
-    [precision, recall, ~] = perfcurve(Y_fs, artifProbs, 1, 'XCrit', 'reca', 'YCrit', 'prec');
-    % Compute area under precision-recall curve
-    prAUC = trapz(recall, precision) % Trapezoidal approximation of the area
+    % Compute PR AUC using the function
+    prAUC = computePRCurveAUC(Y_fs, probScores(:,2), 1);
     evalMetrics.prAUC = prAUC;
 end

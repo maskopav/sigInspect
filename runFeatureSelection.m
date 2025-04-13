@@ -164,13 +164,17 @@ for artifactIdx=2:4
     % Class weights - three different weights 
     YFsArtif = cellfun(@(y) y(artifactIdx, :), YTrain, 'UniformOutput',false);
 
-    cleanToArtifactRatios = [2, 2.5, 3];
-    for cleanToArtifactRatio = 1:length(cleanToArtifactRatios)
+    cleanToArtifactRatios = [2, 2.5, 3, 3.5, 4];
+    for cleanToArtifactIdx= 1:length(cleanToArtifactRatios)
+        cleanToArtifactRatio = cleanToArtifactRatios(cleanToArtifactIdx);
         costMatrix = [0 1; 1 0];
     
         for idx = 1:length(criteriaList)
+            % Start timer
+            startTime = datetime('now');
+
             criteria = criteriaList{idx}; 
-            disp(['Evaluating using criterion: ', criteria])
+            disp(['Evaluating using criterion: ', criteria, ', Ratio: ', num2str(cleanToArtifactRatio)])
 
             % Feature selection with SVM RBF kernel
             [selectedFeatures_FS, evalMetrics_train, svmModel] = featureSelectionWithUndersampling(X_fs_train, Y_fs_train, costMatrix, criteria, signal_ids_train, cleanToArtifactRatio);
@@ -185,27 +189,43 @@ for artifactIdx=2:4
 
             predictions = predict(svmModel, X_fs_val);
             evalMetrics_val = computeEvaluationMetrics(Y_fs_val, predictions);
-            evalMetrics_val.prAUC = 0;
+
+            % To make predictions with soft labels (probabilities)
+            [~, probScores] = predict(svmProbModel, X_fs_val);
+            % Compute PR AUC using the function
+            prAUC = computePRCurveAUC(Y_fs_val, probScores(:,2), 1);
+            evalMetrics_val.prAUC = prAUC;
 
             % Predict on unseen dataset, for feature comparison with LSTM
             [X_fs_unseen, Y_fs_unseen, signal_ids_test] = extractFeatureValues(XTest, YTest, artifactIdx, testPatientIds);
             X_fs_unseen = X_fs_unseen(:, selectedFeatures_FS);
+
             predictions = predict(svmModel, X_fs_unseen);
             evalMetrics_unseen = computeEvaluationMetrics(Y_fs_unseen, predictions);
-            evalMetrics_unseen.prAUC = 0;
 
-            % Save Results to Excel File
+            % To make predictions with soft labels (probabilities)
+            [~, probScores] = predict(svmProbModel, X_fs_unseen);
+            % Compute PR AUC using the function
+            prAUC = computePRCurveAUC(Y_fs_unseen, probScores(:,2), 1);
+            evalMetrics_unseen.prAUC = prAUC;
+
+            % End timer
+            endTime = datetime('now');
+            duration = endTime - startTime;
+
+            % Save results to Excel File
             resultsTable = table(artifactIdx, ...
                 strjoin(string(selectedFeatures_FS), ', '), strjoin(string(featNames(selectedFeatures_FS)), ', '), ...
                 evalMetrics_train.accuracy, evalMetrics_train.sensitivity, evalMetrics_train.specificity, evalMetrics_train.precision, evalMetrics_train.f1, evalMetrics_val.youden, evalMetrics_train.prAUC, ...
                 evalMetrics_val.accuracy, evalMetrics_val.sensitivity, evalMetrics_val.specificity, evalMetrics_val.precision, evalMetrics_val.f1, evalMetrics_val.youden, evalMetrics_val.prAUC, ...
                 evalMetrics_unseen.accuracy, evalMetrics_unseen.sensitivity, evalMetrics_unseen.specificity, evalMetrics_unseen.precision, evalMetrics_unseen.f1, evalMetrics_unseen.youden, evalMetrics_unseen.prAUC, ...
-                strjoin(string(costMatrix), ', '), string(criteria), ...
+                cleanToArtifactRatio, string(criteria), ...
+                startTime, duration, ...
                 'VariableNames', {'artifactIdx', 'Selected_FS_Features', 'Selected_FS_Features_Names', ...
                                   'Accuracy_Train', 'Sensitivity_Train', 'Specificity_Train', 'Precision_Train', 'F1_Score_Train', 'Youden_Train', 'PR_AUC_Train', ...
                                   'Accuracy_Validation', 'Sensitivity_Validation', 'Specificity_Validation', 'Precision_Validation', 'F1_Score_Validation', 'Youden_Validation', 'PR_AUC_Validation', ...
                                   'Accuracy_Unseen', 'Sensitivity_Unseen', 'Specificity_Unseen', 'Precision_Unseen', 'F1_Score_Unseen', 'Youden_Unseen', 'PR_AUC_Unseen', ...
-                                  'Cost_Matrix', 'Criteria'});
+                                  'Clean_To_Artifact_Ratio', 'Criterion', 'Start_Time', 'Duration'});
             saveResultsToExcel(excelFile, sheetName, resultsTable);
         end
     end
