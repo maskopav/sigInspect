@@ -125,9 +125,9 @@ YVal = Yfinal(valIdx, :);
 XTest = Xfinal(testIdx, :);
 YTest = Yfinal(testIdx, :);
 [trainIdx, valIdx, testIdx] = splitDataByPatients(signalIdsFiltered, ratios);
-[trainPatientIds, trainUniquePatients] = getPatientIds(signalIds(trainIdx));
-[valPatientIds, valUniquePatients] = getPatientIds(signalIds(valIdx));
-[testPatientIds, testUniquePatients] = getPatientIds(signalIds(testIdx));
+[trainPatientIds, trainUniquePatients] = getPatientIds(signalIdsFiltered(trainIdx));
+[valPatientIds, valUniquePatients] = getPatientIds(signalIdsFiltered(valIdx));
+[testPatientIds, testUniquePatients] = getPatientIds(signalIdsFiltered(testIdx));
 
 % Display results
 fprintf('Number of training samples: %d, number of unique patients: %d\n', numel(trainIdx), trainUniquePatients);
@@ -135,8 +135,8 @@ fprintf('Number of validation samples: %d, number of unique patients: %d\n', num
 fprintf('Number of test samples: %d, number of unique patients: %d\n', numel(testIdx), testUniquePatients);
 
 %%
-excelFile = 'FS_results_undersampling.xlsx';
-sheetName = 'FS';
+excelFile = 'FS_results_undersampling_cost.xlsx';
+sheetName = 'FS_cost';
 % Youden and recall similar results -> only Youden and F1 score
 criteriaList = {'youden'};
 
@@ -164,10 +164,11 @@ for artifactIdx=2:4
     % Class weights - three different weights 
     YFsArtif = cellfun(@(y) y(artifactIdx, :), YTrain, 'UniformOutput',false);
 
-    cleanToArtifactRatios = [2, 2.5, 3, 3.5, 4];
+    cleanToArtifactRatios = [1.5, 2, 2.5, 3, 3.5, 4];
     for cleanToArtifactIdx= 1:length(cleanToArtifactRatios)
         cleanToArtifactRatio = cleanToArtifactRatios(cleanToArtifactIdx);
-        costMatrix = [0 1; 1 0];
+        costWeight = computeClassWeights(Y_fs_train);
+        costMatrix = [0 1; costWeight 0];
     
         for idx = 1:length(criteriaList)
             % Start timer
@@ -219,13 +220,13 @@ for artifactIdx=2:4
                 evalMetrics_train.accuracy, evalMetrics_train.sensitivity, evalMetrics_train.specificity, evalMetrics_train.precision, evalMetrics_train.f1, evalMetrics_val.youden, evalMetrics_train.prAUC, ...
                 evalMetrics_val.accuracy, evalMetrics_val.sensitivity, evalMetrics_val.specificity, evalMetrics_val.precision, evalMetrics_val.f1, evalMetrics_val.youden, evalMetrics_val.prAUC, ...
                 evalMetrics_unseen.accuracy, evalMetrics_unseen.sensitivity, evalMetrics_unseen.specificity, evalMetrics_unseen.precision, evalMetrics_unseen.f1, evalMetrics_unseen.youden, evalMetrics_unseen.prAUC, ...
-                cleanToArtifactRatio, string(criteria), ...
+                cleanToArtifactRatio, costWeight, string(criteria), ...
                 startTime, duration, ...
                 'VariableNames', {'artifactIdx', 'Selected_FS_Features', 'Selected_FS_Features_Names', ...
                                   'Accuracy_Train', 'Sensitivity_Train', 'Specificity_Train', 'Precision_Train', 'F1_Score_Train', 'Youden_Train', 'PR_AUC_Train', ...
                                   'Accuracy_Validation', 'Sensitivity_Validation', 'Specificity_Validation', 'Precision_Validation', 'F1_Score_Validation', 'Youden_Validation', 'PR_AUC_Validation', ...
                                   'Accuracy_Unseen', 'Sensitivity_Unseen', 'Specificity_Unseen', 'Precision_Unseen', 'F1_Score_Unseen', 'Youden_Unseen', 'PR_AUC_Unseen', ...
-                                  'Clean_To_Artifact_Ratio', 'Criterion', 'Start_Time', 'Duration'});
+                                  'Clean_To_Artifact_Ratio', 'ClassWeight', 'Criterion', 'Start_Time', 'Duration'});
             saveResultsToExcel(excelFile, sheetName, resultsTable);
         end
     end

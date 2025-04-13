@@ -1,26 +1,21 @@
-function [net, predictedProbs] = trainAndPredictLSTM(XTrain, YTrain, XVal, YVal, XTest, YTest, ...
-    inputSize, numClasses, classWeights, lstmUnits, dropOut, maxEpochs, miniBatchSize, ...
-    initialLearnRate, validationFrequency, validationPatience, classMode)
+function [net, predictedProbsTrain, predictedProbsVal, predictedProbsTest] = trainAndPredictLSTM(XTrain, YTrain, XVal, YVal, XTest, YTest, ...
+    inputSize, numClasses, lstmSettings, classMode)
     % This function trains an LSTM network and predicts probabilities.
-    % 
-    % Arguments:
-    %   XTrain, YTrain, XVal, YVal, XTest, YTest: Training, validation, and test datasets
-    %   inputSize: The number of features in the input data
-    %   numClasses: The number of output classes (e.g., 2 for binary classification)
-    %   classWeights: Vector of class weights for imbalanced data
-    %   lstmUnits: The number of units in the LSTM layer
-    %   dropOut: DropoutLayer
-    %   maxEpochs: The maximum number of epochs to train the network
-    %   miniBatchSize: The size of each mini-batch during training
-    %   initialLearnRate: The initial learning rate for the optimizer
-    %   validationFrequency: How often to run validation during training
-    %   validationPatience: Number of epochs without improvement before stopping training
-    %   classMode: 'binary' for binary classification, 'multi' for multi-label classification
 
     % Validate mode input
     if ~ismember(classMode, {'binary', 'multi'})
         error("Invalid mode. Use 'binary' for binary classification or 'multi' for multi-label classification.");
     end
+
+    % Extract settings from struct
+    lstmUnits = lstmSettings.lstmUnits;
+    dropOut = lstmSettings.dropOut;
+    maxEpochs = lstmSettings.maxEpochs;
+    miniBatchSize = lstmSettings.miniBatchSize;
+    initialLearnRate = lstmSettings.initialLearnRate;
+    classWeights = lstmSettings.classWeights;
+    validationFrequency = lstmSettings.validationFrequency;
+    validationPatience = lstmSettings.validationPatience;
 
         % Define common LSTM layers
     layers = [
@@ -60,6 +55,8 @@ function [net, predictedProbs] = trainAndPredictLSTM(XTrain, YTrain, XVal, YVal,
     % Train the LSTM network
     net = trainNetwork(XTrain, YTrain, layers, options);
 
-    % Predict probabilities on the test data
-    predictedProbs = predict(net, XTest, 'MiniBatchSize', miniBatchSize);
+    % Predict probabilities
+    predictedProbsTrain = predict(net, XTrain, 'MiniBatchSize', miniBatchSize);
+    predictedProbsVal   = predict(net, XVal, 'MiniBatchSize', miniBatchSize);
+    predictedProbsTest  = predict(net, XTest, 'MiniBatchSize', miniBatchSize);
 end

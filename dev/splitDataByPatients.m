@@ -15,7 +15,7 @@ function [trainIdx, valIdx, testIdx] = splitDataByPatients(signalIds, ratios)
     uniquePatientIds = unique(patientIds);
 
     % Shuffle unique patient IDs for random splitting
-    rng('default'); % For reproducibility
+    rng(2); % For reproducibility
     shuffledPatientIds = uniquePatientIds(randperm(length(uniquePatientIds)));
 
     % Compute number of patients for each split

@@ -12,17 +12,24 @@ function classWeights = computeClassWeights(Yfinal, alpha)
         alpha = 1.5; % Default alpha if not provided
     end
 
-    % Convert categorical to numeric if needed
-    Yfinal = cellfun(@(y) double(string(y)), Yfinal, 'UniformOutput', false);
-
-    numClasses = size(Yfinal{1}, 1); % Number of output classes
-    numSamples = sum(cellfun(@(y) size(y, 2), Yfinal)); % Total number of samples
-    % Initialize vector to store class occurrence counts
-    classCounts = zeros(numClasses, 1);
-
-    % Count occurrences of each class 
-    for i = 1:length(Yfinal)
-        classCounts = classCounts + sum(Yfinal{i}, 2); % Sum over all samples 
+    if iscell(Yfinal)
+        % Convert categorical to numeric if needed
+        Yfinal = cellfun(@(y) double(string(y)), Yfinal, 'UniformOutput', false);
+    
+        numClasses = size(Yfinal{1}, 1); % Number of output classes
+        numSamples = sum(cellfun(@(y) size(y, 2), Yfinal)); % Total number of samples
+        % Initialize vector to store class occurrence counts
+        classCounts = zeros(numClasses, 1);
+    
+        % Count occurrences of each class 
+        for i = 1:length(Yfinal)
+            classCounts = classCounts + sum(Yfinal{i}, 2); % Sum over all samples 
+        end
+    else
+        Yfinal = double(string(Yfinal));
+        numClasses = 1;
+        numSamples = length(Yfinal);
+        classCounts = sum(Yfinal);
     end
 
     % Compute exponential inverse frequency class weights

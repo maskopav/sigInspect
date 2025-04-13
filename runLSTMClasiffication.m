@@ -23,7 +23,7 @@ else
 end
 
 % LOAD OR CREATE FEATURE DATA (X and Y)
-if isfile(featureDataPath)
+if isfile(featureDataPath) 
     fprintf('Feature file exist. Loading data...\n');
     load(featureDataPath, 'featureSet');
 
@@ -106,16 +106,19 @@ end
 %% Data split for model training
 ratios = struct('train', 0.6, 'val', 0.2, 'test', 0.2);
 [trainIdx, valIdx, testIdx] = splitDataByPatients(signalIdsFiltered, ratios);
+[trainPatientIds, trainUniquePatients] = getPatientIds(signalIds(trainIdx));
+[valPatientIds, valUniquePatients] = getPatientIds(signalIds(valIdx));
+[testPatientIds, testUniquePatients] = getPatientIds(signalIds(testIdx));
 
 % Display results
-fprintf('Number of training samples: %d\n', numel(trainIdx));
-fprintf('Number of validation samples: %d\n', numel(valIdx));
-fprintf('Number of test samples: %d\n', numel(testIdx));
+fprintf('Number of training samples: %d, number of unique patients: %d\n', numel(trainIdx), trainUniquePatients);
+fprintf('Number of validation samples: %d, number of unique patients: %d\n', numel(valIdx), valUniquePatients);
+fprintf('Number of test samples: %d, number of unique patients: %d\n', numel(testIdx), testUniquePatients);
 
 
 %% Feature selection - selected features by runFeatureSelection script using sequentialfs and svm model
-artifactIdx = 3;
-selectedFeatures_FS = [14, 16, 20, 30, 31, 32];
+artifactIdx = 2;
+selectedFeatures_FS = [2, 6, 8, 21, 30];
 Xselected = cellfun(@(x) x(selectedFeatures_FS, :), Xfiltered, 'UniformOutput', false);
 Yselected = cellfun(@(y) y(artifactIdx, :), Yfiltered, 'UniformOutput', false);
 
@@ -140,8 +143,9 @@ mode = 'binary'; % or 'binary'
 
 % Handle number of classes and class weights
 if strcmp(mode, 'binary')
-    alpha = 0.6;
-    classWeight = computeClassWeights(Yfinal, alpha)
+    alpha = 0.8;
+    classWeight = computeClassWeights(Yfinal, alpha);
+    % classWeight =  3.0134;
     classWeights = [1, classWeight]; % Only for binary classification
     numClasses = 2;
 elseif strcmp(mode, 'multi')
@@ -149,23 +153,39 @@ elseif strcmp(mode, 'multi')
     %classWeights = %ones(1, numClasses); 
 end
 
-inputSize = size(XTrain{1}, 1);   % Number of features
-lstmUnits = 20;                    % Number of LSTM units
-dropOut = 0.3;
-maxEpochs = 30;                    % Number of epochs
-miniBatchSize = 32;                % Mini-batch size
-initialLearnRate = 0.0001;          % Initial learning rate
-validationFrequency = 10;          % Frequency of validation checks
-validationPatience = 5;            % Early stopping if no improvement for 5 epochs
+lstmSettings = struct();
 
+inputSize = size(XTrain{1}, 1);   % Number of features
+
+lstmSettings.lstmUnits = 5;                    % Number of LSTM units
+lstmSettings.dropOut = 0.4;
+lstmSettings.maxEpochs = 30;                    % Number of epochs
+lstmSettings.miniBatchSize = 16;                % Mini-batch size
+lstmSettings.initialLearnRate = 0.0001;          % Initial learning rate
+lstmSettings.validationFrequency = 10;          % Frequency of validation checks
+lstmSettings.validationPatience = 5;            % Early stopping if no improvement for 5 epochs
+lstmSettings.classWeights = classWeights;
 
 % Call function to train the model and predict
-[net, predictedProbs] = trainAndPredictLSTM(XTrain, YTrain, XVal, YVal, XTest, YTest, ...
-    inputSize, numClasses, classWeights, ...
-    lstmUnits, dropOut, maxEpochs, miniBatchSize, ...
-    initialLearnRate, validationFrequency, validationPatience, mode);
-%% Classify unseen data
-[accuracy, sensitivity, specificity, auc, optimalThreshold] = evaluateModel(predictedProbs, YTest, mode)
+[net, predictedProbsTrain, predictedProbsVal, predictedProbsTest] = trainAndPredictLSTM(XTrain, YTrain, XVal, YVal, XTest, YTest, ...
+    inputSize, numClasses, lstmSettings, mode);
+%% Classify unseen data and save results to excel file 
+excelFile = 'FS_results_undersampling_cost.xlsx';
+sheetName = 'LSTM';
+
+evalMetricsTrain = evaluateModel(predictedProbsTrain, YTrain, mode, artifactIdx);
+evalMetricsVal = evaluateModel(predictedProbsVal, YVal, mode, artifactIdx);
+evalMetricsTest = evaluateModel(predictedProbsTest, YTest, mode, artifactIdx);
+
+saveLSTMResultsToExcel(artifactIdx, evalMetricsTrain, evalMetricsVal, evalMetricsTest, lstmSettings, excelFile, sheetName)
+
+%% Soft label plots
+fig = figure;
+plotSoftLabelDistributions(predictedProbsTest, YTest);
+savePlotToExcel(fig, excelFile, 'TestSoftLabelsPlot', 'plot_test.png');
+
+% plotSoftLabelDistributions(predictedProbsTest, YTest);
+
 
 %% Analysis of signals in case of wierd shape of AUC curve
 % Windows corresponding to a False Positive Rate (FPR) between 0.1 and 0.2 
@@ -196,75 +216,15 @@ matchingWindows = cellfun(@(x) ((x >= minThreshold) & (x <= maxThreshold))', pro
 matchingSignalIndices = find(cellfun(@(x) any(x), matchingWindows));
 
 %%
-idx = matchingSignalIndices(7);
+idx = 4; % matchingSignalIndices(30);
 signalTest = signalData(testIdx, :);
 signal = signalTest{idx};
 fs = 24000;
 signalProbs = probsPos{idx}';
-signalLabels = YTest{idx};
+signalLabels = double(string(YTest{idx}));
 signalArtifNames = 'POW';
 useSpectrogram = true;
 
 visualizeSignalWithPredictions(signal, fs, signalProbs, signalLabels, signalArtifNames, useSpectrogram)
-
-%% Soft label analysis
-allProbs = cellfun(@(x) x(2, :)', predictedProbs, 'UniformOutput', false);
-allProbs = vertcat(allProbs{:});
-
-% HISTOGRAM OF SOFT LABELS
-figure;
-histogram(allProbs, 20)
-xlabel('Soft label probability'); ylabel('Count');
-title(['Distribution of soft labels, artif: ', num2str(artifactIdx)])
-
-% AVG SOFT LABEL PER WINDOW
-allProbsWindows = cellfun(@(x) x(2, :), predictedProbs, 'UniformOutput', false);
-allProbsWindows = vertcat(allProbsWindows{:}); 
-
-% Get true labels (0 = clean, 1 = artifact)
-allTrueLabels = cellfun(@(x) x(:)', YTest, 'UniformOutput', false);
-allTrueLabels = vertcat(allTrueLabels{:}); 
-allTrueLabels = double(string(allTrueLabels));
-
-[numSamples, numWindows] = size(allProbsWindows);
-[winX, ~] = meshgrid(1:numWindows, 1:numSamples);
-xData = winX(:);
-yData = allProbsWindows(:);
-labels = allTrueLabels(:);  % 0 = clean, 1 = artifact
-
-% Colors
-cmap = [0 0 1; 1 0 0];  % blue = clean, red = artifact
-colorData = cmap(labels + 1, :);  % label+1 for indexing
-
-% Split data by label for curves
-probsCleanMask = allProbsWindows;
-probsCleanMask(allTrueLabels == 1) = NaN;
-probsArtifMask = allProbsWindows;
-probsArtifMask(allTrueLabels == 0) = NaN;
-
-avgClean = mean(probsCleanMask, 1, 'omitnan');
-stdClean = std(probsCleanMask, 0, 1, 'omitnan');
-avgArtifact = mean(probsArtifMask, 1, 'omitnan');
-stdArtifact = std(probsArtifMask, 0, 1, 'omitnan');
-
-% Plotting
-figure; hold on;
-
-% Plot shaded error bars for both groups
-shadedErrorBar(1:numWindows, avgClean, stdClean, 'lineProps', {'b', 'DisplayName', 'Clean avg ± STD'});
-shadedErrorBar(1:numWindows, avgArtifact, stdArtifact, 'lineProps', {'r', 'DisplayName', 'Artifact avg ± STD'});
-
-% Scatter points
-scatter(xData(labels==0), yData(labels==0), 10, 'b', 'filled', 'MarkerFaceAlpha', 0.3, 'DisplayName', 'Clean samples');
-scatter(xData(labels==1), yData(labels==1), 10, 'r', 'filled', 'MarkerFaceAlpha', 0.3, 'DisplayName', 'Artifact samples');
-hold off
-
-% Labels and legend
-xlabel('Windows'); ylabel('Soft label');
-ylim([0 1])
-title('Soft labels per window');
-legend('Location', 'best');
-grid on;
-
 
 

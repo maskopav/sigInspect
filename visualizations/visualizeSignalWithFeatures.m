@@ -28,13 +28,9 @@ function visualizeSignalWithFeatures(signal, fs, features, featureNames, winLeng
     % Compute window centers for feature plotting
     t = (0:length(signal)-1) / fs;
     numWindows = floor(length(signal) / winLength);
-    windowCenters = zeros(1, numWindows);
+    winLengthSample = length(t) / numWindows;
+    windowCenters = linspace(t(floor(winLengthSample/2)), t(length(t)-floor(winLengthSample/2)), numWindows);
 
-    for k = 1:numWindows
-        startIdx = (k-1) * winLength + 1;
-        endIdx = k * winLength;
-        windowCenters(k) = mean(t(startIdx:endIdx));
-    end
 
     % Plot features
     subplot(3,1,3);
