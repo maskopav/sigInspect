@@ -69,6 +69,8 @@ function [selectedFeatures_FS, evalMetrics, svmModel] = featureSelectionWithUnde
                 [balancedTrainX, balancedTrainY] = undersampleByRatio(trainX, trainY, trainPatientIds, cleanToArtifactRatio);
                 % fprintf('After undersampling, fold: %d\n', fold);
                 % tabulate(balancedTrainY)
+                % balancedTrainX = trainX;
+                % balancedTrainY = trainY;
 
                 % Evaluate on this fold
                 foldScores(fold) = baseEvalFunc(balancedTrainX, balancedTrainY, testX, testY);

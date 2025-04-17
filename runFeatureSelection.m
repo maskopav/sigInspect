@@ -103,7 +103,7 @@ if strcmp(mode, 'multi')
     disp(['Removed ', num2str(sum(artifactTypeToDeleteIdx)), ' signals containing unwanted artifact types']);
 end
 
-
+%%
 % Final variables for the model
 Xfinal = Xfiltered;
 Yfinal = Yfiltered;
@@ -172,7 +172,7 @@ for artifactIdx=2:4
         costMatrix = [0 1; costWeight 0];
     
         for idx = 1:length(criteriaList)
-            % Start timer
+            % Start time
             startTime = datetime('now');
 
             criteria = criteriaList{idx}; 
@@ -218,7 +218,7 @@ for artifactIdx=2:4
             % Save results to Excel File
             resultsTable = table(artifactIdx, ...
                 strjoin(string(selectedFeatures_FS), ', '), strjoin(string(featNames(selectedFeatures_FS)), ', '), ...
-                evalMetrics_train.accuracy, evalMetrics_train.sensitivity, evalMetrics_train.specificity, evalMetrics_train.precision, evalMetrics_train.f1, evalMetrics_val.youden, evalMetrics_train.prAUC, ...
+                evalMetrics_train.accuracy, evalMetrics_train.sensitivity, evalMetrics_train.specificity, evalMetrics_train.precision, evalMetrics_train.f1, evalMetrics_train.youden, evalMetrics_train.prAUC, ...
                 evalMetrics_val.accuracy, evalMetrics_val.sensitivity, evalMetrics_val.specificity, evalMetrics_val.precision, evalMetrics_val.f1, evalMetrics_val.youden, evalMetrics_val.prAUC, ...
                 evalMetrics_unseen.accuracy, evalMetrics_unseen.sensitivity, evalMetrics_unseen.specificity, evalMetrics_unseen.precision, evalMetrics_unseen.f1, evalMetrics_unseen.youden, evalMetrics_unseen.prAUC, ...
                 cleanToArtifactRatio, costWeight, string(criteria), ...
