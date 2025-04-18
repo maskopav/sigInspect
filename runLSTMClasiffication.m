@@ -110,6 +110,14 @@ end
 [~, nUniquePatients] = getPatientIds(signalIdsFiltered);
 fprintf('Number of patients after filtering of unwanted artifact types: %d\n', nUniquePatients);
 
+%% Data sample
+[~, artifact2, signalIdsWindows] = extractFeatureValues(Xfiltered, Yfiltered, 2, signalIdsFiltered);% POWER
+[~, artifact3, ~] = extractFeatureValues(Xfiltered, Yfiltered, 3, signalIdsFiltered); % BASE
+[~, artifact4, ~] = extractFeatureValues(Xfiltered, Yfiltered, 4, signalIdsFiltered); % FREQ
+fprintf('POW artifacts: %d\n', sum(double(string(artifact2))))
+fprintf('BASE artifacts: %d\n', sum(double(string(artifact3))))
+fprintf('FREQ artifacts: %d\n', sum(double(string(artifact4))))
+
 %% Data split for model training
 ratios = struct('train', 0.6, 'val', 0.2, 'test', 0.2);
 [trainIdx, valIdx, testIdx] = splitDataByPatients(signalIdsFiltered, ratios);
@@ -249,4 +257,20 @@ useSpectrogram = true;
 
 visualizeSignalWithPredictions(signal, fs, signalProbs, signalLabels, signalArtifNames, useSpectrogram)
 
+%% Plot artifact distributions
+counts = plotArtifactHistogram(Xfiltered, Yfiltered, signalIdsFiltered);
 
+%%
+for j = 1:numel(counts)
+    sortedCounts = counts{j}.artifactCounts;
+    sortedPatients = counts{j}.patientIds; 
+    totalCount = sum(sortedCounts);
+    percent = 100 * sortedCounts / totalCount;
+
+    fprintf('\n=== Artifact Type %d ===\n', j);
+    fprintf('%-12s %-10s %-10s\n', 'PatientID', 'Count', 'Percent');
+
+    for k = 1:numel(sortedPatients)
+        fprintf('%-12s %-10d %-9.2f%%\n', sortedPatients{k}, sortedCounts(k), percent(k));
+    end
+end
