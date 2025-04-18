@@ -67,8 +67,11 @@ function [selectedFeatures_FS, evalMetrics, svmModel] = featureSelectionWithUnde
 
                 % Perform undersampling on training data at patient level
                 [balancedTrainX, balancedTrainY] = undersampleByRatio(trainX, trainY, trainPatientIds, cleanToArtifactRatio);
-                % fprintf('After undersampling, fold: %d\n', fold);
-                % tabulate(balancedTrainY)
+                % if fold == 1
+                %     fprintf('After undersampling, fold: %d\n', fold);
+                %     tabulate(balancedTrainY)
+                % end
+
                 % balancedTrainX = trainX;
                 % balancedTrainY = trainY;
 
@@ -105,6 +108,7 @@ function [selectedFeatures_FS, evalMetrics, svmModel] = featureSelectionWithUnde
 
     % Train SVM with probability estimates enabled
     svmModel = fitcsvm(X_fs(:, selectedFeatures_FS), Y_fs, ...
+                      'Prior', 'uniform', ...
                       'KernelFunction', 'RBF', ...
                       'Standardize', true, ...
                       'KernelScale', 'auto');
