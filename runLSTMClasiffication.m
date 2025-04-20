@@ -111,12 +111,19 @@ end
 fprintf('Number of patients after filtering of unwanted artifact types: %d\n', nUniquePatients);
 
 %% Data sample
-[~, artifact2, signalIdsWindows] = extractFeatureValues(Xfiltered, Yfiltered, 2, signalIdsFiltered);% POWER
-[~, artifact3, ~] = extractFeatureValues(Xfiltered, Yfiltered, 3, signalIdsFiltered); % BASE
-[~, artifact4, ~] = extractFeatureValues(Xfiltered, Yfiltered, 4, signalIdsFiltered); % FREQ
-fprintf('POW artifacts: %d\n', sum(double(string(artifact2))))
-fprintf('BASE artifacts: %d\n', sum(double(string(artifact3))))
-fprintf('FREQ artifacts: %d\n', sum(double(string(artifact4))))
+
+
+%% Artifacts undersampling
+
+cfg(1).artifactIdx = 2; cfg(1).nToRemove = 500; cfg(1).patientId = 'sig_2';
+cfg(2).artifactIdx = 3; cfg(2).nToRemove = 553; cfg(2).patientId = 'sig_17';
+cfg(3).artifactIdx = 4; cfg(3).nToRemove = 394; cfg(3).patientId = 'sig_2';
+
+[Xundersampled, Yundersampled, signalIdsUndersampled] = undersampleArtifactsMulti(Xfiltered, Yfiltered, signalIdsFiltered, cfg);
+
+countArtifacts(Xundersampled, Yundersampled, signalIdsUndersampled);
+
+
 
 %% Data split for model training
 ratios = struct('train', 0.6, 'val', 0.2, 'test', 0.2);
@@ -260,7 +267,6 @@ visualizeSignalWithPredictions(signal, fs, signalProbs, signalLabels, signalArti
 %% Plot artifact distributions
 counts = plotArtifactHistogram(Xfiltered, Yfiltered, signalIdsFiltered);
 
-%%
 for j = 1:numel(counts)
     sortedCounts = counts{j}.artifactCounts;
     sortedPatients = counts{j}.patientIds; 
