@@ -1,4 +1,4 @@
-function evalMetrics = evaluateModel(predictedProbsCell, labelsCell, classMode, artifactIdx)
+function evalMetrics = evaluateModel(predictedProbsCell, labelsCell, classMode, artifactIdx, optimalThresholdIn)
     % Evaluate a classification model for binary and multi-label cases.
     % Handles cell inputs where each cell contains a matrix of values.
     %
@@ -6,6 +6,8 @@ function evalMetrics = evaluateModel(predictedProbsCell, labelsCell, classMode, 
     %   predictedProbsCell: Cell array where each cell contains a matrix of predicted probabilities.
     %   labelsCell: Cell array where each cell contains a binary matrix of true labels.
     %   classMode: 'binary' for binary classification, 'multi' for multi-label classification.
+    %   artifactIdx
+    %   thresholdIn: optimal, if provided, skip computing it
     %
     % Returns:
     %   evalMetrics: Struct with eval metrics
@@ -25,22 +27,28 @@ function evalMetrics = evaluateModel(predictedProbsCell, labelsCell, classMode, 
         labels = double(string(labels));
 
         % Compute ROC & AUC
-        [fpr, tpr, thresholds, auc] = perfcurve(labels, predictedProbs, 1);
+        [fpr, tpr, thresholds_roc, auc] = perfcurve(labels, predictedProbs, 1);
 
         % % Optimal threshold (Youden's J-statistic)
         % [~, idx] = max(tpr - fpr); 
-        % optimalThreshold = thresholds(idx);
+        % optimalThreshold = thresholds_roc(idx);
 
          % Compute Precision-Recall curve
-        [prec, rec, thresholds, pr_auc] = perfcurve(labels, predictedProbs, 1, 'xCrit', 'reca', 'yCrit', 'prec');
+        [rec, prec, thresholds_pr, pr_auc] = perfcurve(labels, predictedProbs, 1, 'xCrit', 'reca', 'yCrit', 'prec');
 
-        % Compute F1-score for each threshold
-        f1_scores = 2 * (prec .* rec) ./ (prec + rec);
-        f1_scores(isnan(f1_scores)) = 0; % Handle division by zero
-        
-        % Find the threshold with the highest F1-score
-        [~, idx] = max(f1_scores);
-        optimalThreshold = thresholds(idx);
+        % Compute F2-score for each threshold
+        beta = 2;
+        f2_scores = (1 + beta^2) * (prec .* rec) ./ (beta^2 * prec + rec);
+        f2_scores(isnan(f2_scores)) = 0;
+
+        % Find the threshold with the highest F2-score
+        if nargin < 5 || isempty(optimalThresholdIn)
+            [~, idx] = max(f2_scores);
+            optimalThreshold = thresholds_pr(idx);
+        else
+            optimalThreshold = optimalThresholdIn;
+            [~, idx] = min(abs(thresholds_pr - optimalThreshold));  % closest threshold for plotting
+        end
 
         % Apply threshold
         predictedLabels = double(double(predictedProbs >= optimalThreshold));
@@ -67,7 +75,8 @@ function evalMetrics = evaluateModel(predictedProbsCell, labelsCell, classMode, 
         ylabel('True Positive Rate');
         title(['ROC Curve (AUC = ', num2str(auc, '%.2f'), ')']);
         hold on;
-        plot(fpr(idx), tpr(idx), 'kx', 'MarkerSize', 10, 'MarkerFaceColor', 'k', 'LineWidth', 2);
+        [~, roc_idx] = min(abs(thresholds_roc - optimalThreshold));
+        plot(fpr(roc_idx), tpr(roc_idx), 'kx', 'MarkerSize', 10, 'MarkerFaceColor', 'k', 'LineWidth', 2);
         hold off;
         legend('ROC Curve', ['Optimal Threshold = ', num2str(optimalThreshold, '%.2f'), ],'Location', 'Best');
         grid on;

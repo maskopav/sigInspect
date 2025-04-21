@@ -80,6 +80,7 @@ for artifactIdx=2:4
         cleanToArtifactRatio = cleanToArtifactRatios(cleanToArtifactIdx);
         alpha = 0.5;
         costWeight = computeClassWeights(Y_fs_train, alpha);
+        costWeight = 1;
         costMatrix = [0 1; costWeight 0];
     
         for idx = 1:length(criteriaList)

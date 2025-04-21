@@ -104,9 +104,10 @@ lstmSettings.classWeights = classWeights;
 excelFile = 'results/lstm_classification/FS_results_undersampling_cost.xlsx';
 sheetName = 'LSTM';
 
-evalMetricsTrain = evaluateModel(predictedProbsTrain, YTrain, mode, artifactIdx);
+
 evalMetricsVal = evaluateModel(predictedProbsVal, YVal, mode, artifactIdx);
-evalMetricsTest = evaluateModel(predictedProbsTest, YTest, mode, artifactIdx);
+evalMetricsTrain = evaluateModel(predictedProbsTrain, YTrain, mode, artifactIdx, evalMetricsVal.optimalThreshold);
+evalMetricsTest = evaluateModel(predictedProbsTest, YTest, mode, artifactIdx, evalMetricsVal.optimalThreshold);
 
 saveLSTMResultsToExcel(artifactIdx, selectedFeatures_FS, evalMetricsTrain, evalMetricsVal, evalMetricsTest, lstmSettings, excelFile, sheetName)
 
