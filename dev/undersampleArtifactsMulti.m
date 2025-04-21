@@ -11,13 +11,13 @@ function [X_new, Y_new, signalIds_new] = undersampleArtifactsMulti(X, Y, signalI
 % Randomly alternates between artifact types during removal.
 
     % Initialize everything
-    rng(1)
+    rng(4)
     X_new = X;
     Y_new = Y;
     signalIds_new = signalIds;
     alreadyTrimmed = zeros(length(signalIds_new), 1);
     [patientId, ~] = getPatientIds(signalIds_new);
-    wholeSignalRemoveRatio = 0.7;
+    wholeSignalRemoveRatio = 0.5;
     
     disp('Artifacts counts at the beginning:')
     % Assuming countArtifacts returns artifact counts in the order they appear in Y matrix rows
@@ -56,7 +56,7 @@ function [X_new, Y_new, signalIds_new] = undersampleArtifactsMulti(X, Y, signalI
     
     % Stage 1 loop - continue until we've removed 50% of our target removals with full signals
     iterCount = 0;
-    maxIter = 10000;  % Safety limit
+    maxIter = 5000;  % Safety limit
     
     while iterCount < maxIter 
         iterCount = iterCount + 1;
@@ -107,7 +107,7 @@ function [X_new, Y_new, signalIds_new] = undersampleArtifactsMulti(X, Y, signalI
         n_artifact = sum(y_art);  % Count windows with this artifact
         
         % If this signal has enough artifacts of this type and passes random check
-        if n_artifact >= 0.3 * winCount && rand < wholeSignalRemoveRatio
+        if n_artifact >= 0.2 * winCount && rand < wholeSignalRemoveRatio
             pid = patientId{k};
             % Check if signal is from a patient we want to undersample for this artifact
             targetPatients = patientsPerArt(aid);
@@ -194,15 +194,16 @@ function [X_new, Y_new, signalIds_new] = undersampleArtifactsMulti(X, Y, signalI
 
     fprintf('\n=== Stage 2: Trim artifacts from signals (start/end) ===\n');
 
-    maxIterStage2 = 5000;
+    maxIterStage2 = 3000;
     stage2Iter = 0;
     [patientId, ~] = getPatientIds(signalIds_new);
     nonTrimmableSignals = containers.Map('KeyType', 'double', 'ValueType', 'any');
     for aid = artifactTypes
         nonTrimmableSignals(aid) = [];
     end
+    signalsAvaiable = true;
 
-    while stage2Iter < maxIterStage2
+    while stage2Iter < maxIterStage2 && signalsAvaiable
         stage2Iter = stage2Iter + 1;
 
         % Recalculate remaining to remove after each iteration
@@ -238,16 +239,19 @@ function [X_new, Y_new, signalIds_new] = undersampleArtifactsMulti(X, Y, signalI
         allowedPatients = config(find([config.artifactIdx] == aid)).patientId;
         allowedSignalIdx = find(ismember(patientId, allowedPatients));
 
+        allowedSignalIdx = setdiff(allowedSignalIdx, nonTrimmableSignals(aid));
+
         if isempty(allowedSignalIdx)
-            disp('No signal ids found for selected patient.')
-            continue;
+            disp('No trimmable signal ids found.')
+            if length(eligibleAids) == 1
+                signalsAvaiable = false;
+            else 
+                continue;
+            end
         end
 
         % Random signal and channel
         k = allowedSignalIdx(randi(length(allowedSignalIdx)));
-        if ismember(k, nonTrimmableSignals(aid))
-            continue;
-        end
 
         y_mat = Y_new{k};
         if size(y_mat, 1) < aid
@@ -257,6 +261,8 @@ function [X_new, Y_new, signalIds_new] = undersampleArtifactsMulti(X, Y, signalI
 
         % Skip if no artifact of this type
         if all(y_art == 0)
+            nonTrimmableSignals(aid) = unique([nonTrimmableSignals(aid), k]);
+            fprintf('CLEAN - %d non trimmable signals for %d artifact:\n', length(nonTrimmableSignals(aid)), aid)
             continue;
         end
 
@@ -289,8 +295,7 @@ function [X_new, Y_new, signalIds_new] = undersampleArtifactsMulti(X, Y, signalI
             n_remaining = length(y_art) - length(trimRange);
             if n_remaining < 5
                 nonTrimmableSignals(aid) = unique([nonTrimmableSignals(aid), k]);
-                fprintf('Non trimmable signals for %d artifact:\n', aid)
-                disp(nonTrimmableSignals(aid));
+                fprintf('%d non trimmable signals for %d artifact:\n', length(nonTrimmableSignals(aid)), aid)
                 continue;
             end
         end
@@ -301,6 +306,8 @@ function [X_new, Y_new, signalIds_new] = undersampleArtifactsMulti(X, Y, signalI
         for otherAid = fulfilledAids
             if size(y_mat, 1) >= otherAid && sum(y_mat(otherAid, trimRange)) > 0
                 skip = true;
+                nonTrimmableSignals(aid) = unique([nonTrimmableSignals(aid), k]);
+                fprintf('OTHER ARTIF - %d non trimmable signals for %d artifact:\n', length(nonTrimmableSignals(aid)), aid)
                 break;
             end
         end
