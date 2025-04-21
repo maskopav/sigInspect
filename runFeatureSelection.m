@@ -32,6 +32,19 @@ fprintf('Number of training samples: %d, number of unique patients: %d\n', numel
 fprintf('Number of validation samples: %d, number of unique patients: %d\n', numel(valIdx), valUniquePatients);
 fprintf('Number of test samples: %d, number of unique patients: %d\n', numel(testIdx), testUniquePatients);
 
+% Final variables for the model
+Xfinal = X;
+Yfinal = Y;
+%Yfinal = cellfun(@(y) categorical(double(y(:)')), Yfinal, 'UniformOutput', false);
+signalIdsFinal = signalIds;
+
+% Access the splits
+XTrain = Xfinal(trainIdx, :);
+YTrain = Yfinal(trainIdx, :);
+XVal = Xfinal(valIdx, :);
+YVal = Yfinal(valIdx, :);
+XTest = Xfinal(testIdx, :);
+YTest = Yfinal(testIdx, :);
 %%
 excelFile = 'FS_results_undersampling_cost.xlsx';
 sheetName = 'FS_cost';
@@ -62,7 +75,7 @@ for artifactIdx=2:4
     % Class weights - three different weights 
     YFsArtif = cellfun(@(y) y(artifactIdx, :), YTrain, 'UniformOutput',false);
 
-    cleanToArtifactRatios = [1.5, 2, 2.5, 3, 3.5, 4];
+    cleanToArtifactRatios = [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5];
     for cleanToArtifactIdx= 1:length(cleanToArtifactRatios)
         cleanToArtifactRatio = cleanToArtifactRatios(cleanToArtifactIdx);
         alpha = 0.5;
