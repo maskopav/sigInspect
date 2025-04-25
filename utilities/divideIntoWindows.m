@@ -7,7 +7,7 @@ function windows = divideIntoWindows(signal, windowLength, samplingFreq)
     % OUTPUT:
     % windows: 3D matrix of size [channels x segmentLength x numWindows]
 
-    segmentLength = windowLength * samplingFreq; % Compute number of samples per window
+    segmentLength = floor(windowLength * samplingFreq); % Compute number of samples per window
     numWindows = floor(size(signal, 2) / segmentLength); % Calculate number of full windows
     
     % Reshape signal into windows

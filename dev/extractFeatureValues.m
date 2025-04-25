@@ -18,6 +18,9 @@ function [allFeatureValues, labels, sigIdsValues] = extractFeatureValues(X, Y, a
         
         % Insert data into preallocated matrix at the correct positiona
         allFeatureValues(colIdx:colIdx+numSamples-1, :) = featVals';
+
+        % disp(size(labels(colIdx:colIdx+numSamples-1)))
+        % disp(size(labelVals))
         labels(colIdx:colIdx+numSamples-1) = labelVals;
         
         sigIdsValues(colIdx:colIdx+numSamples-1) = repmat({sigVal}, numSamples, 1);

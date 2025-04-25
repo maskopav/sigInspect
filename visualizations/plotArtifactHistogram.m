@@ -17,8 +17,6 @@ function counts = plotArtifactHistogram(X, Y, signalIds)
     counts{2} = countArtifactPerPatient(artifact3, patientIds);
     counts{3} = countArtifactPerPatient(artifact4, patientIds);
 
-    disp(size(counts{1}))
-
     labels = {'Artifact Type 1 (Power)', 'Artifact Type 2 (Base)', 'Artifact Type 3 (Freq)'};
     colors = {[0.1, 0.5, 0.8], [0.93, 0.69, 0.13], [0.9, 0.4, 0.4]};
     
