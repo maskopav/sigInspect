@@ -1,80 +1,291 @@
-% Patient data
-PatientID = {'sig_1', 'sig_10', 'sig_12', 'sig_13', 'sig_14', 'sig_15', ...
-             'sig_16', 'sig_17', 'sig_18', 'sig_19', 'sig_2', 'sig_20', ...
-             'sig_21', 'sig_22', 'sig_23', 'sig_24', 'sig_25', 'sig_26', ...
-             'sig_27', 'sig_29', 'sig_3', 'sig_4', 'sig_5', 'sig_6', ...
-             'sig_7', 'sig_8', 'sig_9'}';
+function patientSummary = visualizeArtifactWeights(X, Y, signalIds, artifactNames, colors)
+    % plotArtifactHistogram plots histograms of artifact counts per patient,
+    % overlays mean ± 2*std, and prints filtering stats.
+    % 
+    % Inputs:
+    %   X, Y - data and labels
+    %   signalIds - cell array of signal identifiers
+    %   artifactNames - cell array of artifact type names (default: {'POW', 'BASE', 'FREQ'})
+    %   colors - cell array of RGB triplets for coloring (default: {[0.2 0.6 1], [1.0 0.7 0.0], [0.8 0.2 0.2]})
+    
+    % Default parameter values
+    if nargin < 4 || isempty(artifactNames)
+        artifactNames = {'POW', 'BASE', 'FREQ'};
+    end
 
-n = length(PatientID);
+    if nargin < 5 || isempty(colors)
+        colors = {[0.2 0.6 1], [1.0 0.7 0.0], [0.8 0.2 0.2]};
+    end
+    
+    % Extract artifact data for each type
+    artifactData = cell(1, 3);
+    for i = 1:3
+        [~, artifactData{i}, signalIdsWindows] = extractFeatureValues(X, Y, i+1, signalIds);
+    end
+    
+    % Get patient IDs from signalIds
+    [patientIds, ~] = getPatientIds(signalIdsWindows);
+    
+    % Display patient distribution
+    tabulate(patientIds);
+    
+    % Count artifacts per patient for each artifact type
+    counts = cell(1, 3);
+    for i = 1:3
+        counts{i} = countArtifactPerPatient(artifactData{i}, patientIds);
+    end
+    
+    % Extract all counts and patient IDs
+    allPatientIds = unique(patientIds);
+    n = length(allPatientIds);
 
-% Total windows per patient
-TotalWindows = [220,1280,1650,2620,2450,2050,180,1750,1620,1020,2450,1940,270,2000,990,220,2730,380,750,1900,950,1340,2190,360,1050,1250,590]';
-
-% Artifact counts (POW, BASE, FREQ)
-Art1 = [1,39,19,68,12,178,0,14,90,57,713,88,5,35,61,38,24,10,4,21,51,99,9,4,157,113,12]';
-Art2 = [0,169,16,136,11,45,0,817,43,22,258,8,141,215,86,10,41,9,16,1,7,18,9,5,15,2,215]';
-Art3 = [2,74,105,154,58,281,6,271,660,206,1075,167,8,223,125,73,66,6,54,27,369,152,50,18,474,180,51]';
-
-ArtifactCounts = [Art1, Art2, Art3];
-
-% Extract and sort numeric IDs
-PatientNum = str2double(regexprep(PatientID, 'sig_', ''));
-[PatientNumSorted, sortIdx] = sort(PatientNum);
-
-% Sort all data
-PatientID = PatientID(sortIdx);
-PatientNum = PatientNumSorted;
-TotalWindows = TotalWindows(sortIdx);
-ArtifactCounts = ArtifactCounts(sortIdx, :);
-
-% Compute per-patient artifact type weight (percentage)
-weights = 100 * ArtifactCounts ./ sum(ArtifactCounts, 1);
-
-
-% Plot
-n = length(PatientID);
-figure('Color', 'w', 'Position', [100, 100, 1300, 600]);
-hb = bar(weights, 'grouped');
-title('Artifact weights per patient');
-xlabel('Patient ID');
-ylabel('Weight (% of artifact windows per patient)');
-xticks(1:n);
-xticklabels(PatientNum);
-xtickangle(45);
-grid on;
-
-% Bar colors
-set(hb(1), 'FaceColor', [0.2 0.6 1]);   % POW
-set(hb(2), 'FaceColor', [1.0 0.7 0.0]); % BASE
-set(hb(3), 'FaceColor', [0.8 0.2 0.2]); % FREQ
-
-% Add threshold line
-yline(15, 'r--', '15% threshold', ...
-    'Color', 'r', ...
-    'LabelHorizontalAlignment', 'right', ...
-    'LabelVerticalAlignment', 'bottom', ...
-    'LineWidth', 1.5);
-
-% Annotate values on bars and highlight if > threshold
-threshold = 15;
-for i = 1:n
-    for j = 1:3
-        val = weights(i, j);
-        if val > 0
-            x = i + (j - 2) * 0.25; % shift label within group
-            y = val + 0.5;
-            %y = val + 2 + 1.5*(j-2); % add variable offset for clarity
-            if val > threshold
-                color = 'r';
-            else
-                color = 'k';
+    % Calculate total windows per patient
+    totalWindows = zeros(n, 1);
+    for i = 1:n
+        totalWindows(i) = sum(strcmp(patientIds, allPatientIds{i}));
+    end
+    
+    % Prepare data for plotting
+    artifactCounts = zeros(n, 3);
+    
+    % Extract the artifact counts for all patients
+    for i = 1:3
+        for j = 1:length(counts{i}.patientIds)
+            idx = find(strcmp(allPatientIds, counts{i}.patientIds{j}));
+            if ~isempty(idx)
+                artifactCounts(idx, i) = counts{i}.artifactCounts(j);
             end
-            text(x, y, sprintf('%.1f%% (%d)', val, ArtifactCounts(i, j)), ...
-                'Color', color, ...
-                'FontSize', 8, ... %'VerticalAlignment', 'top', ...
-                'Rotation',90);
         end
     end
+    
+    % Extract numeric patient IDs for sorting
+    patientNum = str2double(regexprep(allPatientIds, 'sig_', ''));
+    patientClusters = cellfun(@(id) id(1:3), allPatientIds, 'UniformOutput', false);
+
+    for i = 1:length(patientClusters)
+        if strcmp(patientClusters{i}, 'Bra')
+            patientClusters{i} = 'BRATISLAVA';
+        elseif strcmp(patientClusters{i}, 'Brn')
+            patientClusters{i} = 'BRNO';
+        elseif strcmp(patientClusters{i}, 'Olo')
+            patientClusters{i} = 'OLOMOUC';
+        else
+            patientClusters{i} = 'UNKNOWN'; 
+        end
+    end
+
+    % First sort by cluster name, then by patient number within each cluster
+    uniqueClusters = unique(patientClusters);
+    numClusters = length(uniqueClusters);
+    
+    % Create a new order based on clusters
+    newOrder = [];
+    clusterBoundaries = zeros(numClusters+1, 1);
+    clusterBoundaries(1) = 1;
+    
+    for i = 1:numClusters
+        cluster = uniqueClusters{i};
+        % Find all patients in this cluster
+        clusterPatientIdx = find(strcmp(patientClusters, cluster));
+        
+        % Sort patients within this cluster by patient number
+        [~, sortIdxWithinCluster] = sort(patientNum(clusterPatientIdx));
+        sortedClusterPatientIdx = clusterPatientIdx(sortIdxWithinCluster);
+        
+        % Add these patients to the new order
+        newOrder = [newOrder; sortedClusterPatientIdx];
+        
+        % Record the boundary after this cluster
+        clusterBoundaries(i+1) = clusterBoundaries(i) + length(sortedClusterPatientIdx);
+    end
+    
+    % Reorder everything based on the new order
+    patientIdsSorted = allPatientIds(newOrder);
+    patientNumSorted = patientNum(newOrder);
+    artifactCountsSorted = artifactCounts(newOrder, :);
+    totalWindowsSorted = totalWindows(newOrder);
+    patientClustersSorted = patientClusters(newOrder);
+    
+    % Calculate weights (percentage of each artifact type per patient)
+    totalArtifacts = sum(artifactCountsSorted, 1);
+    weights = 100 * artifactCountsSorted ./ totalArtifacts;
+    
+    % Plot the bar chart with switched axes (patients on y-axis)
+    figure('Color', 'w', 'Position', [100, 100, 900, 1000]);
+    
+    % Create horizontal grouped bar chart
+    hb = barh(weights, 'grouped');
+
+    ax = gca;
+    % Remove the box around the plot
+    box(ax, 'off');
+
+    % % Make major ticks point outward (optional, looks nicer)
+    ax.TickDir = 'none';
+
+    % Set bar colors
+    for i = 1:3
+        set(hb(i), 'FaceColor', colors{i});
+    end
+    
+    % Add labels and grid
+    title('Artifact weights per patient and center', 'FontSize', 14, 'FontWeight', 'bold');
+    ylabel('Patient ID', 'FontSize', 12);
+    xlabel('Weight (% of artifact windows per patient)', 'FontSize', 12);
+    
+    % Set y-axis ticks to patient IDs
+    yticks(1:n);
+    yticklabels(1:n);
+
+    % Add cluster dividers and labels
+    hold on;
+    for i = 2:length(clusterBoundaries)
+        % Add horizontal line between clusters
+        boundary = clusterBoundaries(i) - 0.5;
+        if boundary < n
+            line([0, 35], [boundary, boundary], 'Color', 'k', 'LineStyle', "-", 'LineWidth', 1);
+            
+            % Add cluster name annotation
+            clusterName = uniqueClusters{i-1};
+            midPoint = (clusterBoundaries(i-1) + clusterBoundaries(i) - 1) / 2;
+            text(max(max(weights))*0.95, midPoint, clusterName, ...
+                'FontWeight', 'bold', ...
+                'HorizontalAlignment', 'left', ...
+                'VerticalAlignment', 'middle', ...
+                'FontSize', 10, ...
+                'Color', 'k');
+        end
+    end
+    
+    % Add last cluster name
+    if numClusters > 0
+        midPoint = (clusterBoundaries(end-1) + n) / 2;
+        text(max(max(weights))*0.95, midPoint, uniqueClusters{end}, ...
+            'FontWeight', 'bold', ...
+            'HorizontalAlignment', 'left', ...
+            'VerticalAlignment', 'middle', ...
+            'FontSize', 10, ...
+            'Color', 'k');
+    end
+     
+    hold on;
+
+    % Add threshold line
+    threshold = 15;
+    xline(threshold, 'r--', 'LineWidth', 1.5);
+    text(threshold + 1, n * 0.98, '15% threshold', ...
+        'Color', 'r', ...
+        'FontWeight', 'bold', ...
+        'HorizontalAlignment', 'left', ...
+        'VerticalAlignment', 'top');
+
+    
+    % Annotate values on bars and highlight if > threshold
+    for i = 1:n
+        for j = 1:3
+            val = weights(i, j);
+            if val > 0
+                % Calculate position for text (adjust for horizontal bars)
+                y = i + (j - 2) * 0.25; % shift label within group
+                x = val + 0.5;
+                
+                % Determine text color based on threshold
+                if val > threshold
+                    color = 'r';
+                else
+                    color = 'k';
+                end
+                
+                % Add text annotation
+                text(x, y, sprintf('%.1f%% (%d)', val, artifactCountsSorted(i, j)), ...
+                    'Color', color, ...
+                    'FontSize', 9, ...
+                    'Rotation', 0);
+            end
+        end
+    end
+    
+    % Add legend
+    legend(hb, artifactNames, 'Location', 'best');
+    
+    xlim([0, 35]);
+
+    hold off
+
+    % Create comprehensive patient summary structure
+    patientSummary = struct(...
+        'patientIds', {patientIdsSorted}, ...
+        'totalWindows', totalWindowsSorted, ...
+        'artifactCounts', artifactCountsSorted, ...
+        'artifactTypes', {artifactNames}, ...
+        'percentagesOfTotal', weights, ...
+        'clusters', {patientClustersSorted} ...
+    );
+    
+    % Print summary table for review
+    fprintf('\nPatient Artifact Summary (by cluster):\n');
+    fprintf('%-10s %-15s %-12s %-10s %-10s %-10s\n', 'Patient', 'Cluster', 'TotalWindows', artifactNames{1}, artifactNames{2}, artifactNames{3});
+    fprintf('%-10s %-15s %-12s %-10s %-10s %-10s\n', '-------', '-------', '-----------', '--------', '--------', '--------');
+    
+    currentCluster = '';
+    for i = 1:n
+        if ~strcmp(currentCluster, patientClustersSorted{i})
+            currentCluster = patientClustersSorted{i};
+            fprintf('%-10s %-15s %-12s %-10s %-10s %-10s\n', ...
+                '---', ['[ ' currentCluster ' ]'], '---', '---', '---', '---');
+        end
+        
+        fprintf('%-10s %-15s %-12d %-10d %-10d %-10d\n', ...
+            patientIdsSorted{i}, ...
+            patientClustersSorted{i}, ...
+            totalWindowsSorted(i), ...
+            artifactCountsSorted(i, 1), ...
+            artifactCountsSorted(i, 2), ...
+            artifactCountsSorted(i, 3));
+    end
+    
+    % Print totals row
+    fprintf('%-10s %-15s %-12d %-10d %-10d %-10d\n', ...
+        'TOTAL', ...
+        '', ...
+        sum(totalWindowsSorted), ...
+        sum(artifactCountsSorted(:, 1)), ...
+        sum(artifactCountsSorted(:, 2)), ...
+        sum(artifactCountsSorted(:, 3)));
+    
+    % Also create individual histograms for each artifact type
+    % figure('Color', 'w');
+    % for i = 1:3
+    %     subplot(3, 1, i);
+    %     data = counts{i}.artifactCounts;
+    %     binWidth = 15;
+    %     histogram(data, 'BinWidth', binWidth, 'FaceColor', colors{i}, 'FaceAlpha', 0.6);
+    %     title(['Artifact Type: ', artifactNames{i}]);
+    %     xlabel('Number of artifacts per patient');
+    %     ylabel('Number of patients');
+    %     ylim([0 11]);
+    % 
+    %     % Outlier detection and reporting
+    %     [maxVal, idxMax] = max(data);
+    %     outlierPatient = counts{i}.patientIds{idxMax};
+    % 
+    %     % Count number of signals that belong to the outlier patient
+    %     isSamePatient = strcmp(patientIds, outlierPatient);
+    %     numSignals = sum(isSamePatient);
+    % 
+    %     fprintf('\n%s:\nOutlier patient: %s with %d artifacts and %d signals windows.\n', ...
+    %         artifactNames{i}, outlierPatient, maxVal, numSignals);
+    % end
+    % 
+    % % Create boxplot comparison
+    % data_all = [counts{1}.artifactCounts(:); counts{2}.artifactCounts(:); counts{3}.artifactCounts(:)];
+    % group_all = [repmat({artifactNames{1}}, length(counts{1}.artifactCounts), 1); ...
+    %              repmat({artifactNames{2}}, length(counts{2}.artifactCounts), 1); ...
+    %              repmat({artifactNames{3}}, length(counts{3}.artifactCounts), 1)];
+    % 
+    % figure('Color', 'w');
+    % boxplot(data_all, group_all);
+    % ylabel('Number of artifacts per patient');
+    % title('Artifact distributions by type');
 end
 
-legend({'POW', 'BASE', 'FREQ', 'Threshold'}, 'Location', 'best');
