@@ -11,7 +11,7 @@ function [X_new, Y_new, signalIds_new] = undersampleArtifactsMulti(X, Y, signalI
 % Randomly alternates between artifact types during removal.
 
     % Initialize everything
-    rng(4)
+    rng(1)
     X_new = X;
     Y_new = Y;
     signalIds_new = signalIds;
@@ -201,9 +201,9 @@ function [X_new, Y_new, signalIds_new] = undersampleArtifactsMulti(X, Y, signalI
     for aid = artifactTypes
         nonTrimmableSignals(aid) = [];
     end
-    signalsAvaiable = true;
+    signalsAvailable = true;
 
-    while stage2Iter < maxIterStage2 && signalsAvaiable
+    while stage2Iter < maxIterStage2 && signalsAvailable
         stage2Iter = stage2Iter + 1;
 
         % Recalculate remaining to remove after each iteration
@@ -244,7 +244,8 @@ function [X_new, Y_new, signalIds_new] = undersampleArtifactsMulti(X, Y, signalI
         if isempty(allowedSignalIdx)
             disp('No trimmable signal ids found.')
             if length(eligibleAids) == 1
-                signalsAvaiable = false;
+                signalsAvailable = false;
+                break;
             else 
                 continue;
             end
@@ -266,38 +267,31 @@ function [X_new, Y_new, signalIds_new] = undersampleArtifactsMulti(X, Y, signalI
             continue;
         end
 
-        % Decide trim direction randomly
-        int = rand(1,1);
-        if int < 0.5
+        % Determine which side has the closest artifact window
+        firstIdx = find(y_art == 1, 1, 'first');
+        lastIdx = find(y_art == 1, 1, 'last');
+        
+        % Calculate distance from each end to determine which is closer
+        distFromStart = firstIdx - 1;
+        distFromEnd = length(y_art) - lastIdx;
+        
+        % Choose the side with the closest artifact
+        if distFromStart <= distFromEnd
             trimDir = "start";
-            trimIdx = find(y_art == 1, 1, 'first');
+            trimIdx = firstIdx;
             trimRange = 1:trimIdx;
         else
             trimDir = "end";
-            trimIdx = find(y_art == 1, 1, 'last');
+            trimIdx = lastIdx;
             trimRange = trimIdx:length(y_art);
         end
-
-        % Do not trim if signal would go below 5 windows
+        
+        % Do not trim if signal would go below 4 windows
         n_remaining = length(y_art) - length(trimRange);
-        if n_remaining < 5
-            if int >= 0.5
-                trimDir = "start";
-                trimIdx = find(y_art == 1, 1, 'first');
-                trimRange = 1:trimIdx;
-            else
-                trimDir = "end";
-                trimIdx = find(y_art == 1, 1, 'last');
-                trimRange = trimIdx:length(y_art);
-            end
-
-            % Do not trim if signal would go below 5 windows
-            n_remaining = length(y_art) - length(trimRange);
-            if n_remaining < 5
-                nonTrimmableSignals(aid) = unique([nonTrimmableSignals(aid), k]);
-                fprintf('%d non trimmable signals for %d artifact:\n', length(nonTrimmableSignals(aid)), aid)
-                continue;
-            end
+        if n_remaining < 4
+            nonTrimmableSignals(aid) = unique([nonTrimmableSignals(aid), k]);
+            fprintf('%d non trimmable signals for %d artifact:\n', length(nonTrimmableSignals(aid)), aid);
+            continue;
         end
 
         % Check if other already-fulfilled artifacts exist at trimIdx
@@ -319,7 +313,6 @@ function [X_new, Y_new, signalIds_new] = undersampleArtifactsMulti(X, Y, signalI
         fprintf('Trimming %s of signal %d (removing %d windows)\n', trimDir, k, length(trimRange));
         X_new{k}(:, trimRange) = [];
         Y_new{k}(:, trimRange) = [];
-        signalIds_new{k}(trimRange) = [];
         for aid = artifactTypes
             removedNow = sum(y_mat(aid, trimRange));
             totalRemovedMap(aid) = totalRemovedMap(aid) + removedNow;
@@ -329,7 +322,6 @@ function [X_new, Y_new, signalIds_new] = undersampleArtifactsMulti(X, Y, signalI
         emptyIdx = cellfun(@isempty, X_new);
         X_new = X_new(~emptyIdx);
         Y_new = Y_new(~emptyIdx);
-        signalIds_new = signalIds_new(~emptyIdx);
     end
 
     if stage2Iter >= maxIterStage2

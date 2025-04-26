@@ -22,7 +22,7 @@ featNames = featureSetUndersampled.featNames; % Cell array
 
 
 %% Data split for model training
-ratios = struct('train', 0.6, 'val', 0.2, 'test', 0.2);
+ratios = struct('train', 0.65, 'val', 0.2, 'test', 0.15);
 [trainIdx, valIdx, testIdx] = splitDataByPatients(signalIds, ratios);
 [trainPatientIds, trainUniquePatients] = getPatientIds(signalIds(trainIdx));
 [valPatientIds, valUniquePatients] = getPatientIds(signalIds(valIdx));
@@ -34,8 +34,8 @@ fprintf('Number of validation samples: %d, number of unique patients: %d\n', num
 fprintf('Number of test samples: %d, number of unique patients: %d\n', numel(testIdx), testUniquePatients);
 
 %% Feature selection - selected features by runFeatureSelection script using sequentialfs and svm model
-artifactIdx = 2;
-selectedFeatures_FS = [3, 6, 17, 21, 23, 30, 31];
+artifactIdx = 4;
+selectedFeatures_FS = [6, 9, 14, 16];
 Xselected = cellfun(@(x) x(selectedFeatures_FS, :), X, 'UniformOutput', false);
 Yselected = cellfun(@(y) y(artifactIdx, :), Y, 'UniformOutput', false);
 

@@ -1,4 +1,4 @@
-function patientSummary = visualizeArtifactWeights(X, Y, signalIds, artifactNames, colors)
+function patientSummary = visualizeArtifactWeights(X, Y, signalIds, displayClusters, patientToClusterMap)
     % plotArtifactHistogram plots histograms of artifact counts per patient,
     % overlays mean ± 2*std, and prints filtering stats.
     % 
@@ -7,14 +7,14 @@ function patientSummary = visualizeArtifactWeights(X, Y, signalIds, artifactName
     %   signalIds - cell array of signal identifiers
     %   artifactNames - cell array of artifact type names (default: {'POW', 'BASE', 'FREQ'})
     %   colors - cell array of RGB triplets for coloring (default: {[0.2 0.6 1], [1.0 0.7 0.0], [0.8 0.2 0.2]})
-    
-    % Default parameter values
-    if nargin < 4 || isempty(artifactNames)
-        artifactNames = {'POW', 'BASE', 'FREQ'};
-    end
+    %   displayClusters - if true, cluster taken from patientId and are
+    %   displayed in plot
 
-    if nargin < 5 || isempty(colors)
-        colors = {[0.2 0.6 1], [1.0 0.7 0.0], [0.8 0.2 0.2]};
+    artifactNames = {'POW', 'BASE', 'FREQ'};
+    colors = {[0.2 0.6 1], [1.0 0.7 0.0], [0.8 0.2 0.2]};
+    
+    if nargin < 4
+        displayClusters = false;
     end
     
     % Extract artifact data for each type
@@ -28,6 +28,20 @@ function patientSummary = visualizeArtifactWeights(X, Y, signalIds, artifactName
     
     % Display patient distribution
     tabulate(patientIds);
+
+    if nargin == 5
+        % Map patient IDs to their dataset splits
+        patientClusters = cell(size(patientIds)); % Initialize as cell array
+        for i = 1:numel(patientIds)
+            patientId = patientIds{i};
+            if isfield(patientToClusterMap, patientId)
+                patientClusters{i} = patientToClusterMap.(patientId);
+            else
+                patientClusters{i} = 'UNKNOWN'; 
+                warning('Patient ID "%s" not found in patientDatasetMap.', patientId);
+            end
+        end
+    end
     
     % Count artifacts per patient for each artifact type
     counts = cell(1, 3);
@@ -60,51 +74,67 @@ function patientSummary = visualizeArtifactWeights(X, Y, signalIds, artifactName
     
     % Extract numeric patient IDs for sorting
     patientNum = str2double(regexprep(allPatientIds, 'sig_', ''));
-    patientClusters = cellfun(@(id) id(1:3), allPatientIds, 'UniformOutput', false);
 
-    for i = 1:length(patientClusters)
-        if strcmp(patientClusters{i}, 'Bra')
-            patientClusters{i} = 'BRATISLAVA';
-        elseif strcmp(patientClusters{i}, 'Brn')
-            patientClusters{i} = 'BRNO';
-        elseif strcmp(patientClusters{i}, 'Olo')
-            patientClusters{i} = 'OLOMOUC';
-        else
-            patientClusters{i} = 'UNKNOWN'; 
+    % Clusters from patient id if not specified
+    if displayClusters 
+        if nargin < 5
+            patientClusters = cellfun(@(id) id(1:3), allPatientIds, 'UniformOutput', false);
+        
+            for i = 1:length(patientClusters)
+                if strcmp(patientClusters{i}, 'Bra')
+                    patientClusters{i} = 'BRATISLAVA';
+                elseif strcmp(patientClusters{i}, 'Brn')
+                    patientClusters{i} = 'BRNO';
+                elseif strcmp(patientClusters{i}, 'Olo')
+                    patientClusters{i} = 'OLOMOUC';
+                else
+                    patientClusters{i} = 'UNKNOWN'; 
+                end
+            end
         end
-    end
 
-    % First sort by cluster name, then by patient number within each cluster
-    uniqueClusters = unique(patientClusters);
-    numClusters = length(uniqueClusters);
-    
-    % Create a new order based on clusters
-    newOrder = [];
-    clusterBoundaries = zeros(numClusters+1, 1);
-    clusterBoundaries(1) = 1;
-    
-    for i = 1:numClusters
-        cluster = uniqueClusters{i};
-        % Find all patients in this cluster
-        clusterPatientIdx = find(strcmp(patientClusters, cluster));
+        % First sort by cluster name, then by patient number within each cluster
+        uniqueClusters = unique(patientClusters);
+        numClusters = length(uniqueClusters);
         
-        % Sort patients within this cluster by patient number
-        [~, sortIdxWithinCluster] = sort(patientNum(clusterPatientIdx));
-        sortedClusterPatientIdx = clusterPatientIdx(sortIdxWithinCluster);
+        % Create a new order based on clusters
+        newOrder = [];
+        clusterBoundaries = zeros(numClusters+1, 1);
+        clusterBoundaries(1) = 1;
         
-        % Add these patients to the new order
-        newOrder = [newOrder; sortedClusterPatientIdx];
-        
-        % Record the boundary after this cluster
-        clusterBoundaries(i+1) = clusterBoundaries(i) + length(sortedClusterPatientIdx);
+        for i = 1:numClusters
+            cluster = uniqueClusters{i};
+            % Find all patients in this cluster
+            clusterPatientIdx = find(strcmp(patientClusters, cluster));
+            uniqueClusterPatients = unique(patientIds(clusterPatientIdx));
+            newPatientIdx = zeros(size(uniqueClusterPatients));
+            for j = 1:length(uniqueClusterPatients)
+                % Find where this patient ID appears in allPatientIds
+                newPatientIdx(j) = find(strcmp(allPatientIds, uniqueClusterPatients{j}));
+            end
+            
+            % Sort patients within this cluster by patient number
+            % [~, sortIdxWithinCluster] = sort(patientIds(clusterPatientIdx));
+            % sortedClusterPatientIdx = clusterPatientIdx(sortIdxWithinCluster);
+            % 
+            % Add these patients to the new order
+            newOrder = [newOrder; newPatientIdx];
+            
+            % Record the boundary after this cluster
+            clusterBoundaries(i+1) = clusterBoundaries(i) + length(newPatientIdx);
+        end
+
+        patientClustersSorted = patientClusters(newOrder);
+    else
+        newOrder = 1:n;
     end
-    
+  
     % Reorder everything based on the new order
     patientIdsSorted = allPatientIds(newOrder);
     patientNumSorted = patientNum(newOrder);
     artifactCountsSorted = artifactCounts(newOrder, :);
     totalWindowsSorted = totalWindows(newOrder);
-    patientClustersSorted = patientClusters(newOrder);
+    
     
     % Calculate weights (percentage of each artifact type per patient)
     totalArtifacts = sum(artifactCountsSorted, 1);
@@ -139,16 +169,30 @@ function patientSummary = visualizeArtifactWeights(X, Y, signalIds, artifactName
 
     % Add cluster dividers and labels
     hold on;
-    for i = 2:length(clusterBoundaries)
-        % Add horizontal line between clusters
-        boundary = clusterBoundaries(i) - 0.5;
-        if boundary < n
-            line([0, 35], [boundary, boundary], 'Color', 'k', 'LineStyle', "-", 'LineWidth', 1);
-            
-            % Add cluster name annotation
-            clusterName = uniqueClusters{i-1};
-            midPoint = (clusterBoundaries(i-1) + clusterBoundaries(i) - 1) / 2;
-            text(max(max(weights))*0.95, midPoint, clusterName, ...
+
+    if displayClusters
+        for i = 2:length(clusterBoundaries)
+            % Add horizontal line between clusters
+            boundary = clusterBoundaries(i) - 0.5;
+            if boundary < n
+                line([0, 35], [boundary, boundary], 'Color', 'k', 'LineStyle', "-", 'LineWidth', 1);
+                
+                % Add cluster name annotation
+                clusterName = uniqueClusters{i-1};
+                midPoint = (clusterBoundaries(i-1) + clusterBoundaries(i) - 1) / 2;
+                text(max(max(weights))*0.95, midPoint, clusterName, ...
+                    'FontWeight', 'bold', ...
+                    'HorizontalAlignment', 'left', ...
+                    'VerticalAlignment', 'middle', ...
+                    'FontSize', 10, ...
+                    'Color', 'k');
+            end
+        end
+        
+        % Add last cluster name
+        if numClusters > 0
+            midPoint = (clusterBoundaries(end-1) + n) / 2;
+            text(max(max(weights))*0.95, midPoint, uniqueClusters{end}, ...
                 'FontWeight', 'bold', ...
                 'HorizontalAlignment', 'left', ...
                 'VerticalAlignment', 'middle', ...
@@ -156,19 +200,6 @@ function patientSummary = visualizeArtifactWeights(X, Y, signalIds, artifactName
                 'Color', 'k');
         end
     end
-    
-    % Add last cluster name
-    if numClusters > 0
-        midPoint = (clusterBoundaries(end-1) + n) / 2;
-        text(max(max(weights))*0.95, midPoint, uniqueClusters{end}, ...
-            'FontWeight', 'bold', ...
-            'HorizontalAlignment', 'left', ...
-            'VerticalAlignment', 'middle', ...
-            'FontSize', 10, ...
-            'Color', 'k');
-    end
-     
-    hold on;
 
     % Add threshold line
     threshold = 15;
@@ -208,10 +239,13 @@ function patientSummary = visualizeArtifactWeights(X, Y, signalIds, artifactName
     % Add legend
     legend(hb, artifactNames, 'Location', 'best');
     
-    xlim([0, 35]);
+    xlim([0, 40]);
 
     hold off
 
+    if ~displayClusters
+        patientClustersSorted = patientIdsSorted;
+    end
     % Create comprehensive patient summary structure
     patientSummary = struct(...
         'patientIds', {patientIdsSorted}, ...

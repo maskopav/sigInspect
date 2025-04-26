@@ -109,6 +109,8 @@ end
 
 [~, nUniquePatients] = getPatientIds(signalIdsFiltered);
 fprintf('Number of patients after filtering of unwanted artifact types: %d\n', nUniquePatients);
+%% Visualize artifact distribution
+counts = visualizeArtifactWeights(Xfiltered, Yfiltered, signalIdsFiltered)
 
 %% Artifacts undersampling
 
@@ -118,6 +120,8 @@ cfg(3).artifactIdx = 4; cfg(3).nToRemove = 394; cfg(3).patientId = 'sig_2';
 
 [Xundersampled, Yundersampled, signalIdsUndersampled] = undersampleArtifactsMulti(Xfiltered, Yfiltered, signalIdsFiltered, cfg);
 
+%%
+counts = visualizeArtifactWeights(Xundersampled, Yundersampled, signalIdsUndersampled)
 %%  Save undersmapled feature data
 featureDataPath = fullfile(dataFolder, 'featureSetUndersampled.mat');
 featureSetUndersampled = struct('X', {Xundersampled}, ...
@@ -126,3 +130,57 @@ featureSetUndersampled = struct('X', {Xundersampled}, ...
                  'signalIds', {signalIdsUndersampled});
 save(featureDataPath, 'featureSetUndersampled', '-v7.3');
 fprintf('Features data saved to %s\n', featureDataPath);
+
+%% Visualize sets after undersampling
+load(fullfile(dataFolder, 'featureSetUndersampled.mat'), 'featureSetUndersampled');
+
+X = featureSetUndersampled.X;        % Cell array
+Y = featureSetUndersampled.Y;        % Cell array
+signalIds = featureSetUndersampled.signalIds; % Vector
+featNames = featureSetUndersampled.featNames; % Cell array
+
+% Data split for model training
+ratios = struct('train', 0.65, 'val', 0.2, 'test', 0.15);
+[trainIdx, valIdx, testIdx] = splitDataByPatients(signalIds, ratios);
+[trainPatientIds, trainUniquePatients] = getPatientIds(signalIds(trainIdx));
+[valPatientIds, valUniquePatients] = getPatientIds(signalIds(valIdx));
+[testPatientIds, testUniquePatients] = getPatientIds(signalIds(testIdx));
+
+% Display results
+fprintf('Number of training samples: %d, number of unique patients: %d\n', numel(trainIdx), trainUniquePatients);
+fprintf('Number of validation samples: %d, number of unique patients: %d\n', numel(valIdx), valUniquePatients);
+fprintf('Number of test samples: %d, number of unique patients: %d\n', numel(testIdx), testUniquePatients);
+
+% Final variables for the model
+Xfinal = X;
+Yfinal = Y;
+%Yfinal = cellfun(@(y) categorical(double(y(:)')), Yfinal, 'UniformOutput', false);
+signalIdsFinal = signalIds;
+
+% Access the splits
+XTrain = Xfinal(trainIdx, :);
+YTrain = Yfinal(trainIdx, :);
+XVal = Xfinal(valIdx, :);
+YVal = Yfinal(valIdx, :);
+XTest = Xfinal(testIdx, :);
+YTest = Yfinal(testIdx, :);
+
+% Create patientDatasetMap to know which patient belongs to which set
+uniquePatientIds = unique(getPatientIds(signalIdsFinal));
+patientDatasetMap = struct();
+
+for i = 1:numel(uniquePatientIds)
+    patientId = uniquePatientIds{i};
+    if any(strcmp(trainPatientIds, patientId))
+        patientDatasetMap.(patientId) = 'TRAIN';
+    elseif any(strcmp(valPatientIds, patientId))
+        patientDatasetMap.(patientId) = 'VALIDATION';
+    elseif any(strcmp(testPatientIds, patientId))
+        patientDatasetMap.(patientId) = 'TEST';
+    else
+        patientDatasetMap.(patientId) = 'UNKNOWN';
+        warning('Patient ID "%s" not found in any split.', patientId);
+    end
+end
+
+counts = visualizeArtifactWeights(Xfinal, Yfinal, signalIdsFinal, true, patientDatasetMap)

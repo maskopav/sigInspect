@@ -21,7 +21,7 @@ signalIds = featureSetUndersampled.signalIds; % Vector
 featNames = featureSetUndersampled.featNames; % Cell array
 
 % Data split for model training
-ratios = struct('train', 0.6, 'val', 0.2, 'test', 0.2);
+ratios = struct('train', 0.65, 'val', 0.2, 'test', 0.15);
 [trainIdx, valIdx, testIdx] = splitDataByPatients(signalIds, ratios);
 [trainPatientIds, trainUniquePatients] = getPatientIds(signalIds(trainIdx));
 [valPatientIds, valUniquePatients] = getPatientIds(signalIds(valIdx));
@@ -45,12 +45,12 @@ XVal = Xfinal(valIdx, :);
 YVal = Yfinal(valIdx, :);
 XTest = Xfinal(testIdx, :);
 YTest = Yfinal(testIdx, :);
+
 %%
 excelFile = 'FS_results_undersampling_cost.xlsx';
 sheetName = 'FS_cost';
 % Youden and recall similar results -> only Youden and F1 score
 criteriaList = {'youden'};
-
 
 %%% artifactIdx
 %1   'clean'    'CLN'
