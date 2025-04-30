@@ -17,8 +17,9 @@ load(featureDataPath, 'featureSetUndersampled');
 
 X = featureSetUndersampled.X;        % Cell array
 Y = featureSetUndersampled.Y;        % Cell array
-signalIds = featureSetUndersampled.signalIds; % Vector
+signalIds = featureSetUndersampled.signalIds; % Cell array
 featNames = featureSetUndersampled.featNames; % Cell array
+
 
 
 %% Data split for model training
@@ -34,8 +35,8 @@ fprintf('Number of validation samples: %d, number of unique patients: %d\n', num
 fprintf('Number of test samples: %d, number of unique patients: %d\n', numel(testIdx), testUniquePatients);
 
 %% Feature selection - selected features by runFeatureSelection script using sequentialfs and svm model
-artifactIdx = 4;
-selectedFeatures_FS = [6, 9, 14, 16];
+artifactIdx = 3;
+selectedFeatures_FS = [15, 16];
 Xselected = cellfun(@(x) x(selectedFeatures_FS, :), X, 'UniformOutput', false);
 Yselected = cellfun(@(y) y(artifactIdx, :), Y, 'UniformOutput', false);
 
@@ -52,6 +53,22 @@ XVal = Xfinal(valIdx, :);
 YVal = Yfinal(valIdx, :);
 XTest = Xfinal(testIdx, :);
 YTest = Yfinal(testIdx, :);
+
+%% To resolve error in LSTM training for artifact 4
+% Error using trainNetwork
+% The order of the class names of layer 5 must match the order of the class names of the validation data.
+%To get the class names of the validation data, use the categories function.
+
+% Swap first two items in XVal
+tempX = XVal{1};
+XVal{1} = XVal{2};
+XVal{2} = tempX;
+
+% Swap first two items in YVal
+tempY = YVal{1};
+YVal{1} = YVal{2};
+YVal{2} = tempY;
+
 
 %% Classes in datasets 
 trainLabels = cellfun(@(x) x', YTrain, 'UniformOutput', false);
@@ -73,10 +90,11 @@ tabulate(testLabels)
 mode = 'binary'; % or 'binary'
 
 % Handle number of classes and class weights
-if strcmp(mode, 'binary')
+if strcmp(mode, 'binary') 
     alpha = 0.5;
     classWeight = computeClassWeights(Yfinal, alpha);
     % classWeight =  3.0134;
+    classWeight = 2;
     classWeights = [1, classWeight]; % Only for binary classification
     numClasses = 2;
 elseif strcmp(mode, 'multi')
@@ -88,12 +106,12 @@ lstmSettings = struct();
 
 inputSize = size(XTrain{1}, 1);   % Number of features
 
-lstmSettings.lstmUnits = 5;                    % Number of LSTM units
+lstmSettings.lstmUnits = 8;                    % Number of LSTM units
 lstmSettings.dropOut = 0.3;
 lstmSettings.maxEpochs = 30;                    % Number of epochs
 lstmSettings.miniBatchSize = 16;                % Mini-batch size
 lstmSettings.initialLearnRate = 0.0001;          % Initial learning rate
-lstmSettings.validationFrequency = 10;          % Frequency of validation checks
+lstmSettings.validationFrequency = 8;          % Frequency of validation checks
 lstmSettings.validationPatience = 8;            % Early stopping if no improvement for 5 epochs
 lstmSettings.classWeights = classWeights;
 
@@ -101,7 +119,7 @@ lstmSettings.classWeights = classWeights;
 [net, predictedProbsTrain, predictedProbsVal, predictedProbsTest] = trainAndPredictLSTM(XTrain, YTrain, XVal, YVal, XTest, YTest, ...
     inputSize, numClasses, lstmSettings, mode);
 %% Classify unseen data and save results to excel file 
-excelFile = 'results/lstm_classification/FS_results_undersampling_cost.xlsx';
+excelFile = 'results/lstm_classification/LSTM_results.xlsx';
 sheetName = 'LSTM';
 
 

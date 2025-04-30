@@ -1,5 +1,5 @@
 function youdenIndex = computeYoudenIndex(trainX, trainY, testX, testY, costMatrix)
-    model = fitcsvm(trainX, trainY, 'Prior', 'uniform', 'Standardize', true, 'KernelFunction', 'RBF', 'KernelScale', 'auto', 'Cost', costMatrix);
+    model = fitcsvm(trainX, trainY, 'Prior', 'uniform', 'Standardize', true, 'KernelFunction', 'RBF', 'Cost', costMatrix);
     predictions = predict(model, testX);
 
     % Ensure labels and predictions are of the same type

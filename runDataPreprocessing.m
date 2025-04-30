@@ -139,6 +139,7 @@ Y = featureSetUndersampled.Y;        % Cell array
 signalIds = featureSetUndersampled.signalIds; % Vector
 featNames = featureSetUndersampled.featNames; % Cell array
 
+%%
 % Data split for model training
 ratios = struct('train', 0.65, 'val', 0.2, 'test', 0.15);
 [trainIdx, valIdx, testIdx] = splitDataByPatients(signalIds, ratios);
@@ -164,6 +165,13 @@ XVal = Xfinal(valIdx, :);
 YVal = Yfinal(valIdx, :);
 XTest = Xfinal(testIdx, :);
 YTest = Yfinal(testIdx, :);
+%%
+
+% Final variables for the model
+Xfinal = X;
+Yfinal = Y;
+%Yfinal = cellfun(@(y) categorical(double(y(:)')), Yfinal, 'UniformOutput', false);
+signalIdsFinal = signalIds;
 
 % Create patientDatasetMap to know which patient belongs to which set
 uniquePatientIds = unique(getPatientIds(signalIdsFinal));
@@ -184,3 +192,36 @@ for i = 1:numel(uniquePatientIds)
 end
 
 counts = visualizeArtifactWeights(Xfinal, Yfinal, signalIdsFinal, true, patientDatasetMap)
+
+%% Check if the 7th row in all X cells is zeros everywhere (maxCorr feature)
+rowToDelete = 7;
+isRowZero = cellfun(@(m) all(m(rowToDelete, :) == 0), X);
+
+if all(isRowZero)
+    fprintf('The 7th row is zero everywhere. Deleting row and corresponding feature name...\n');
+    
+    % Remove the 7th row from all matrices in X
+    X = cellfun(@(m) m([1:rowToDelete-1, rowToDelete+1:end], :), X, 'UniformOutput', false);
+    
+    % Remove corresponding feature name
+    featNames(rowToDelete) = [];
+else
+    warning('The 7th row is NOT zero everywhere. Aborting deletion.');
+end
+
+
+%%
+% Find indices where signalIds start with 'sig_17' or 'sig_2'
+indicesToDelete = find( ...
+    startsWith(signalIds, 'sig_17') | startsWith(signalIds, 'sig_2') ...
+);
+
+% Delete those indices from all arrays
+X(indicesToDelete) = [];
+Y(indicesToDelete) = [];
+signalIds(indicesToDelete) = [];
+
+emptyIdx = cellfun(@isempty, X);
+X = X(~emptyIdx);
+Y = Y(~emptyIdx);
+signalIds = signalIds(~emptyIdx);
