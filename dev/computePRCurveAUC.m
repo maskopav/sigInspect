@@ -16,7 +16,7 @@ function prAUC = computePRCurveAUC(labels, scores, positiveClass)
     
     % Compute precision and recall at various thresholds
     try
-        [precision, recall, ~] = perfcurve(labels, scores, positiveClass, 'XCrit', 'reca', 'YCrit', 'prec');
+        [recall, precision, ~] = perfcurve(labels, scores, positiveClass, 'XCrit', 'reca', 'YCrit', 'prec');
     catch e
         warning('Error in perfcurve: %s', e.message);
         prAUC = NaN;

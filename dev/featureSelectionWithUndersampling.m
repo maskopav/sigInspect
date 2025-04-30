@@ -123,4 +123,7 @@ function [selectedFeatures_FS, evalMetrics, svmModel] = featureSelectionWithUnde
     % Compute PR AUC using the function
     prAUC = computePRCurveAUC(Y_fs, probScores(:,2), 1);
     evalMetrics.prAUC = prAUC;
+    % Compute ROC AUC using the function
+    rocAUC = computeROCAUC(Y_fs, probScores(:,2), 1);
+    evalMetrics.rocAUC = rocAUC;
 end
