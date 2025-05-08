@@ -68,6 +68,7 @@ end
 
 % trim trailling all-nan rows
 segment = trimTrailNans(segment);
+segment = double(segment); 
 N = size(segment,2);
 
 % subtract DC component

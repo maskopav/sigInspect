@@ -30,7 +30,7 @@ function [selectedFeatures_FS, evalMetrics, svmModel] = featureSelection(X_fs, Y
     selectedFeatures_FS = find(rankedFeatures);
 
     % Train the final model on the full dataset with selected features
-    svmModel = fitcsvm(X_fs(:, selectedFeatures_FS), Y_fs, 'KernelFunction', 'RBF', 'Cost', costMatrix);
+    svmModel = fitcsvm(X_fs(:, selectedFeatures_FS), Y_fs, 'KernelFunction', 'RBF', 'Cost', costMatrix, 'Standardize', true);
 
     cvSVM = crossval(svmModel, 'CVPartition', cv);
 

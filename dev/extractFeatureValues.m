@@ -27,5 +27,5 @@ function [allFeatureValues, labels, sigIdsValues] = extractFeatureValues(X, Y, a
         
         colIdx = colIdx + numSamples; % Update index
     end
-    labels = categorical(labels); 
+    % labels = categorical(labels); 
 end

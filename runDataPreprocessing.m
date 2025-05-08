@@ -132,12 +132,64 @@ save(featureDataPath, 'featureSetUndersampled', '-v7.3');
 fprintf('Features data saved to %s\n', featureDataPath);
 
 %% Visualize sets after undersampling
-load(fullfile(dataFolder, 'featureSetUndersampled.mat'), 'featureSetUndersampled');
+% load(fullfile(dataFolder, 'featureSetUndersampled.mat'), 'featureSetUndersampled');
+% 
+% X = featureSetUndersampled.X;        % Cell array
+% Y = featureSetUndersampled.Y;        % Cell array
+% signalIds = featureSetUndersampled.signalIds; % Vector
+% featNames = featureSetUndersampled.featNames; % Cell array
 
-X = featureSetUndersampled.X;        % Cell array
-Y = featureSetUndersampled.Y;        % Cell array
-signalIds = featureSetUndersampled.signalIds; % Vector
-featNames = featureSetUndersampled.featNames; % Cell array
+load(fullfile(dataFolder, 'featureDataMerged.mat'), 'featureSet');
+
+X = featureSet.X;        % Cell array
+Y = featureSet.Y;        % Cell array
+signalIds = featureSet.signalIds; % Vector
+featNames = featureSet.featNames; % Cell array
+% Remove NANs 
+[~, nUniquePatients] = getPatientIds(signalIds);
+fprintf('Number of patients before filtering: %d\n', nUniquePatients);
+% Nan values can be removed based on raw signal data or feature data
+validIdx = findValidIndices(signalData);
+signalData = signalData(validIdx);
+annotationsData = annotationsData(validIdx);
+X = X(validIdx);
+Y = Y(validIdx);
+signalIds = signalIds(validIdx);
+
+[~, nUniquePatients] = getPatientIds(signalIds);
+fprintf('Number of patients after filtering: %d\n', nUniquePatients);
+% Convert annotations from numeric format to binary format
+% multiclass or binary class option -> choose correct mode
+
+mode = 'multi'; % or 'binary'
+% Number of artifact types for type mode only
+maxN = 6;
+
+Yconverted = convertToBinaryLabels(Y, mode, maxN);
+
+% Add clean class as the first row
+Yconverted = cellfun(@(y) [~any(y, 1); y], Yconverted, 'UniformOutput', false);
+
+% Remove signals which contains sixth type of artifacts ('ARTIF'), which is not suitable for multiclass classification
+if strcmp(mode, 'multi')
+    % Find indices of signals containing artifact type 6 ('OTHR') +
+    % artifact type 7 ('ARTIF')
+    artifactTypeToDeleteIdx = cellfun(@(x) (any(x(6, :)) || any(x(7, :))), Yconverted);
+    
+    Xfiltered = X(~artifactTypeToDeleteIdx);
+    Yfiltered = Yconverted(~artifactTypeToDeleteIdx);
+    signalIdsFiltered = signalIds(~artifactTypeToDeleteIdx);
+
+    % Remove the 6th and 7th row
+    Yfiltered = cellfun(@(y) y(1:5, :), Yfiltered, 'UniformOutput', false);
+
+    % Display number of removed signals
+    disp(['Removed ', num2str(sum(artifactTypeToDeleteIdx)), ' signals containing unwanted artifact types']);
+end
+
+[~, nUniquePatients] = getPatientIds(signalIdsFiltered);
+fprintf('Number of patients after filtering of unwanted artifact types: %d\n', nUniquePatients);
+
 
 %%
 % Data split for model training
@@ -153,10 +205,10 @@ fprintf('Number of validation samples: %d, number of unique patients: %d\n', num
 fprintf('Number of test samples: %d, number of unique patients: %d\n', numel(testIdx), testUniquePatients);
 
 % Final variables for the model
-Xfinal = X;
-Yfinal = Y;
+Xfinal = Xfiltered;
+Yfinal = Yfiltered;
 %Yfinal = cellfun(@(y) categorical(double(y(:)')), Yfinal, 'UniformOutput', false);
-signalIdsFinal = signalIds;
+signalIdsFinal = signalIdsFiltered;
 
 % Access the splits
 XTrain = Xfinal(trainIdx, :);

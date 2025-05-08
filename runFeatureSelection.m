@@ -127,7 +127,7 @@ for artifactIdx=2:4
             evalMetrics_unseen.prAUC = prAUC;
             % Compute ROC AUC
             rocAUC = computeROCAUC(Y_fs_unseen, probScores(:,2), 1);
-            evalMetrics_val.rocAUC = rocAUC;
+            evalMetrics_unseen.rocAUC = rocAUC;
 
 
             % End timer

@@ -92,6 +92,7 @@ function patientSummary = visualizeArtifactWeights(X, Y, signalIds, displayClust
                 end
             end
         end
+        disp(size(patientClusters))
 
         % First sort by cluster name, then by patient number within each cluster
         uniqueClusters = unique(patientClusters);
@@ -104,26 +105,12 @@ function patientSummary = visualizeArtifactWeights(X, Y, signalIds, displayClust
         
         for i = 1:numClusters
             cluster = uniqueClusters{i};
-            % Find all patients in this cluster
-            clusterPatientIdx = find(strcmp(patientClusters, cluster));
-            uniqueClusterPatients = unique(patientIds(clusterPatientIdx));
-            newPatientIdx = zeros(size(uniqueClusterPatients));
-            for j = 1:length(uniqueClusterPatients)
-                % Find where this patient ID appears in allPatientIds
-                newPatientIdx(j) = find(strcmp(allPatientIds, uniqueClusterPatients{j}));
-            end
-            
-            % Sort patients within this cluster by patient number
-            % [~, sortIdxWithinCluster] = sort(patientIds(clusterPatientIdx));
-            % sortedClusterPatientIdx = clusterPatientIdx(sortIdxWithinCluster);
-            % 
-            % Add these patients to the new order
-            newOrder = [newOrder; newPatientIdx];
-            
+            % Find indicies of all patients in this cluster
+            clusterPatientsIds = find(strcmp(patientClusters, cluster));
+            newOrder = [newOrder; clusterPatientsIds];
             % Record the boundary after this cluster
-            clusterBoundaries(i+1) = clusterBoundaries(i) + length(newPatientIdx);
+            clusterBoundaries(i+1) = clusterBoundaries(i) + length(clusterPatientsIds);
         end
-
         patientClustersSorted = patientClusters(newOrder);
     else
         newOrder = 1:n;
@@ -287,7 +274,7 @@ function patientSummary = visualizeArtifactWeights(X, Y, signalIds, displayClust
         sum(artifactCountsSorted(:, 2)), ...
         sum(artifactCountsSorted(:, 3)));
     
-    % Also create individual histograms for each artifact type
+    % Create individual histograms for each artifact type
     % figure('Color', 'w');
     % for i = 1:3
     %     subplot(3, 1, i);

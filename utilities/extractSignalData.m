@@ -19,6 +19,8 @@ function [signalData, annotationsData, signalIds, sampFrequencies] = extractSign
     annotationsData = cellfun(@(x) x.artif, struct2cell(loadedSignals), 'UniformOutput', false);
     if extractSamplingFreq
         sampFrequencies = cellfun(@(x) x.samplingFreq, struct2cell(loadedSignals), 'UniformOutput', false);
+    else
+        sampFrequencies = NaN;
     end
     signalIds = signalFieldNames; % Store signal IDs (field names)
 end

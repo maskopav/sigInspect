@@ -30,28 +30,54 @@ function plotSoftLabelDistributions(predictedProbs, Y)
     percentClean = sum(allTrueLabels == 0, 1) ./ numSamples;
     percentArtifact = sum(allTrueLabels == 1, 1) ./ numSamples;
 
-    % figure
+    figure('Position',[0 0 600 850]);
+    t = tiledlayout(2,1);
+    t.TileSpacing = 'compact';
+    t.Padding = 'compact';
+
     % Proportion plot
-    subplot(2,1,1); hold on;
-    plot(1:numWindows, percentClean, 'b-', 'LineWidth', 1.5, 'DisplayName', 'Clean (true)');
-    plot(1:numWindows, percentArtifact, 'r-', 'LineWidth', 1.5, 'DisplayName', 'Artifact (true)');
+    ax1 = nexttile; hold on; %subplot(2,1,1); hold on;
+    p1 = plot(1:numWindows, percentClean, 'b-', 'LineWidth', 1.5, 'DisplayName', 'Clean (true)');
+    p2 = plot(1:numWindows, percentArtifact, 'r-', 'LineWidth', 1.5, 'DisplayName', 'Artifact (true)');
     xlabel('Windows');
     ylabel('Proportion');
     ylim([0 1]);
+    xlim([1 10])
     title('Proportion of true labels per window');
     legend('Location', 'best');
     grid on;
 
     % Shaded plot of soft labels
-    subplot(2,1,2); hold on;
-    shadedErrorBar(1:numWindows, avgClean, stdClean, 'lineProps', {'b', 'DisplayName', 'Clean avg ± STD'});
-    shadedErrorBar(1:numWindows, avgArtifact, stdArtifact, 'lineProps', {'r', 'DisplayName', 'Artifact avg ± STD'});
-    scatter(xData(labels==0), yData(labels==0), 10, 'b', 'filled', 'MarkerFaceAlpha', 0.3);
-    scatter(xData(labels==1), yData(labels==1), 10, 'r', 'filled', 'MarkerFaceAlpha', 0.3);
+    ax2 = nexttile; hold on; %subplot(2,1,2); hold on;
+    s1 = shadedErrorBar(1:numWindows, avgClean, stdClean, 'lineProps', {'b', 'DisplayName', 'Clean (soft AVG ± STD)', 'LineWidth', 1.5});
+    s2 = shadedErrorBar(1:numWindows, avgArtifact, stdArtifact, 'lineProps', {'r', 'DisplayName', 'Artifact (soft AVG ± STD)', 'LineWidth', 1.5});
+    sc1 = scatter(xData(labels==0), yData(labels==0), 10, 'b', 'filled', 'MarkerFaceAlpha', 0.3, 'DisplayName', 'Clean (true)');
+    sc2 = scatter(xData(labels==1), yData(labels==1), 10, 'r', 'filled', 'MarkerFaceAlpha', 0.3, 'DisplayName', 'Artifact (true)');
     xlabel('Windows');
     ylabel('Soft label');
     ylim([0 1])
+    xlim([1 10])
     title('Soft labels per window');
-    legend('Location', 'best');
+    lgd = legend('Location', 'northoutside');
+    lgd.NumColumns = 2;
     grid on;
+
+    % === Manually adjust bottom axis to be bigger ===
+    pos1 = get(ax1, 'Position');
+    pos2 = get(ax2, 'Position');
+    
+    % Shrink top plot vertically
+    pos1(4) = pos1(4) * 0.6;
+    set(ax1, 'Position', pos1);
+    
+    % Expand bottom plot vertically
+    pos2(2) = pos1(2) - pos2(4)*0.1; % Move up a bit
+    pos2(4) = pos2(4) * 1.4; % Make it taller
+    set(ax2, 'Position', pos2);
+    
+    % === Combined Legend ===
+    % lgd = legend([p1, p2, s1.mainLine, s2.mainLine, sc1, sc2]);
+    % lgd.Layout.Tile = 'north'; % Still works in older MATLAB
+    % lgd.FontSize = 9;
+    % lgd.NumColumns = 2;
 end

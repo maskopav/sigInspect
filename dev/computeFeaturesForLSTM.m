@@ -33,7 +33,7 @@ function [X, Y, featNames] = computeFeaturesForLSTM(signals, labels, windowLengt
 
     % Omit Kosice center - first patient is on index = 1930
     % find(strcmp(fieldnames(loadedSignals), 'sig_Kos_JurM_Dex_1_1_ch1'))
-    numSignals = 1929;
+    %numSignals = 1929;
     
     % Iterate over each signal
     for i = 1:numSignals

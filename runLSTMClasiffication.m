@@ -35,15 +35,15 @@ fprintf('Number of validation samples: %d, number of unique patients: %d\n', num
 fprintf('Number of test samples: %d, number of unique patients: %d\n', numel(testIdx), testUniquePatients);
 
 %% Feature selection - selected features by runFeatureSelection script using sequentialfs and svm model
-artifactIdx = 3;
-selectedFeatures_FS = [15, 16];
+artifactIdx = 4;
+selectedFeatures_FS = [5, 7, 8, 13, 15, 17];
 Xselected = cellfun(@(x) x(selectedFeatures_FS, :), X, 'UniformOutput', false);
-Yselected = cellfun(@(y) y(artifactIdx, :), Y, 'UniformOutput', false);
+Yselected = cellfun(@(y) categorical(double(y(artifactIdx, :))), Y, 'UniformOutput', false);
 
 % Final variables for the model
 Xfinal = Xselected;
 Yfinal = Yselected;
-Yfinal = cellfun(@(y) categorical(double(y(:)')), Yfinal, 'UniformOutput', false);
+% Yfinal = cellfun(@(y) categorical(double(y(:)')), Yfinal, 'UniformOutput', false);
 signalIdsFinal = signalIds;
 
 % Access the splits
@@ -93,8 +93,8 @@ mode = 'binary'; % or 'binary'
 if strcmp(mode, 'binary') 
     alpha = 0.5;
     classWeight = computeClassWeights(Yfinal, alpha);
-    % classWeight =  3.0134;
-    classWeight = 2;
+    % classWeight =  2;
+    % classWeight = 4;
     classWeights = [1, classWeight]; % Only for binary classification
     numClasses = 2;
 elseif strcmp(mode, 'multi')
@@ -107,21 +107,21 @@ lstmSettings = struct();
 inputSize = size(XTrain{1}, 1);   % Number of features
 
 lstmSettings.lstmUnits = 8;                    % Number of LSTM units
-lstmSettings.dropOut = 0.3;
+lstmSettings.dropOut = 0.4;
 lstmSettings.maxEpochs = 30;                    % Number of epochs
 lstmSettings.miniBatchSize = 16;                % Mini-batch size
-lstmSettings.initialLearnRate = 0.0001;          % Initial learning rate
+lstmSettings.initialLearnRate = 0.0005;          % Initial learning rate
 lstmSettings.validationFrequency = 8;          % Frequency of validation checks
-lstmSettings.validationPatience = 8;            % Early stopping if no improvement for 5 epochs
+lstmSettings.validationPatience = 10;            % Early stopping if no improvement for 5 epochs
 lstmSettings.classWeights = classWeights;
 
 % Call function to train the model and predict
 [net, predictedProbsTrain, predictedProbsVal, predictedProbsTest] = trainAndPredictLSTM(XTrain, YTrain, XVal, YVal, XTest, YTest, ...
     inputSize, numClasses, lstmSettings, mode);
+
 %% Classify unseen data and save results to excel file 
 excelFile = 'results/lstm_classification/LSTM_results.xlsx';
 sheetName = 'LSTM';
-
 
 evalMetricsVal = evaluateModel(predictedProbsVal, YVal, mode, artifactIdx);
 evalMetricsTrain = evaluateModel(predictedProbsTrain, YTrain, mode, artifactIdx, evalMetricsVal.optimalThreshold);
@@ -129,12 +129,97 @@ evalMetricsTest = evaluateModel(predictedProbsTest, YTest, mode, artifactIdx, ev
 
 saveLSTMResultsToExcel(artifactIdx, selectedFeatures_FS, evalMetricsTrain, evalMetricsVal, evalMetricsTest, lstmSettings, excelFile, sheetName)
 
+%% Save final LSTM model
+% Save everything into a struct
+results_lstm.net = net;
+results_lstm.predictedProbsTrain = predictedProbsTrain;
+results_lstm.predictedProbsVal = predictedProbsVal;
+results_lstm.predictedProbsTest = predictedProbsTest;
+
+results_lstm.XTrain = XTrain;
+results_lstm.YTrain = YTrain;
+results_lstm.XVal   = XVal;
+results_lstm.YVal   = YVal;
+results_lstm.XTest  = XTest;
+results_lstm.YTest  = YTest;
+results_lstm.featNames = featNames;
+
+% Optional: save the struct to a .mat file for later reuse
+save('data/lstm_results_POW.mat', 'results_lstm');
+
 %% Soft label plots
-fig = figure;
-plotSoftLabelDistributions(predictedProbsTest, YTest);
+plotSoftLabelDistributions(results_lstm.predictedProbsTest, results_lstm.YTest);
 %savePlotToExcel(fig, excelFile, 'TestSoftLabelsPlot', 'plot_test.png');
 
 % plotSoftLabelDistributions(predictedProbsTest, YTest);
+
+%% Visualize atlas of signals with soft labels
+load('data/lstm_results_POW.mat', 'results_lstm')
+loadedSignalsPath = fullfile(dataFolder, 'loadedSignals.mat');
+load(loadedSignalsPath, 'loadedSignals');
+[signalData, annotationsData, signalIdsOrig] = extractSignalData(loadedSignals);
+
+%%
+[trueLabels, predictedLabels, signalIdsLabels] = extractFeatureValues(results_lstm.YTest, results_lstm.predictedProbsTest, 2, signalIds(testIdx));
+% Match signalIdsLabels (from windows) to signalIdsOrig (from original signals)
+matchedIdx = cellfun(@(id) find(strcmp(id, signalIdsOrig)), signalIdsLabels);
+
+% Define soft label bins
+binEdges = [0, 0.15, 0.3, 0.45, 0.6];
+binLabels = {'0-0.25', '0.25-0.5', '0.5-0.75', '0.75-1'};
+
+% Discretize predicted labels into bins
+binIdx = discretize(predictedLabels, binEdges);
+
+% Pre-allocate
+numBins = numel(binLabels);
+binnedWindows = cell(numBins, 1); % Each cell contains list of windows in that bin
+samplingFreq = 24000; % Hz
+windowLength = 1; % seconds
+
+windowsPerSignal = 10;
+
+for b = 1:numBins
+    % Indices of windows in bin b
+    winIdx = find(binIdx == b);
+    
+    % Extract windows
+    binnedWindows{b} = cell(numel(winIdx), 1);
+    for j = 1:numel(winIdx)
+        i = winIdx(j);
+        
+        % Compute which signal and window within signal
+        signalIdx = ceil(i / windowsPerSignal);
+        windowNum = mod(i-1, windowsPerSignal) + 1;
+        
+        % Get corresponding signal and divide into windows
+        signal = signalData{signalIdx};
+        %samplingFreq = samplingFreqs(signalIdx);
+        windows = divideIntoWindows(signal, windowLength, samplingFreq);
+        
+        % Extract the correct window
+        binnedWindows{b}{j} = windows(:, :, windowNum);
+    end
+end
+
+
+figure;
+for b = 1:numBins
+    subplot(2,2,b);
+    hold on;
+    
+    % Plot windows in bin b
+    for j = 21:23 %numel(binnedWindows{b})
+        window = binnedWindows{b}{j}; % [channels x segmentLength]
+        % Plot
+        plot(window);
+    end
+    title(sprintf('Soft label %s', binLabels{b}));
+    xlabel('Samples');
+    ylabel('Amplitude');
+    ylim([-300 300])
+end
+
 
 
 %% Analysis of signals in case of wierd shape of AUC curve
